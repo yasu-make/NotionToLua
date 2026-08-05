@@ -38,6 +38,8 @@ type TokenType =
   | "="
   | ":"
   | ","
+  | "|"
+  | "?"
   | "eof";
 
 interface Token {
@@ -127,6 +129,16 @@ function lex(source: string): Token[] {
     }
     if (char === ",") {
       tokens.push({ type: ",", offset });
+      advance();
+      continue;
+    }
+    if (char === "|") {
+      tokens.push({ type: "|", offset });
+      advance();
+      continue;
+    }
+    if (char === "?") {
+      tokens.push({ type: "?", offset });
       advance();
       continue;
     }
@@ -309,7 +321,18 @@ class Parser {
         depth += 1;
         continue;
       }
-      if (this.match("[") || this.match("]") || this.match("(") || this.match(")") || this.match(".") || this.match("*") || this.match("=") || this.match(":")) {
+      if (
+        this.match("[") ||
+        this.match("]") ||
+        this.match("(") ||
+        this.match(")") ||
+        this.match(".") ||
+        this.match("*") ||
+        this.match("=") ||
+        this.match(":") ||
+        this.match("|") ||
+        this.match("?")
+      ) {
         continue;
       }
       if (

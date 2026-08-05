@@ -1,5 +1,6 @@
 import {
   formatLuauKey,
+  formatLuauString,
   formatLuauValue,
   indentBlock,
   resolveLuauKeyFormat,
@@ -20,6 +21,8 @@ import type {
 import {
   isLuauTable,
   isPropertyValuePresent,
+  isStringArray,
+  isStringLikeNotionType,
   resolveMissingValue,
 } from "./types.js";
 
@@ -123,10 +126,130 @@ function relationPropertyToLuauType(
   return `{ [string]: {\n${indentBlock(fieldLines)}\n} }`;
 }
 
+function collectStringLiteralsFromRecords(
+  propertyName: string,
+  records: LuauRecord[],
+  emptyValue: EmptyValueMode,
+  notionType: string,
+): { literals: string[]; hasNonString: boolean } {
+  const literalSet = new Set<string>();
+  let hasNonString = false;
+
+  for (const record of records) {
+    const value = record.properties[propertyName];
+    if (value === null) {
+      if (emptyValue === "empty_string" && isStringLikeNotionType(notionType)) {
+        literalSet.add("");
+      }
+      continue;
+    }
+    if (value === undefined) {
+      continue;
+    }
+
+    if (typeof value === "string") {
+      literalSet.add(value);
+    } else {
+      hasNonString = true;
+    }
+  }
+
+  return {
+    literals: [...literalSet].sort((left, right) =>
+      left.localeCompare(right, "en"),
+    ),
+    hasNonString,
+  };
+}
+
+function collectMultiSelectLiteralsFromRecords(
+  propertyName: string,
+  records: LuauRecord[],
+): { literals: string[]; hasNonString: boolean } {
+  const literalSet = new Set<string>();
+  let hasNonString = false;
+
+  for (const record of records) {
+    const value = record.properties[propertyName];
+    if (value === null || value === undefined) {
+      continue;
+    }
+
+    if (isStringArray(value)) {
+      for (const item of value) {
+        literalSet.add(item);
+      }
+    } else {
+      hasNonString = true;
+    }
+  }
+
+  return {
+    literals: [...literalSet].sort((left, right) =>
+      left.localeCompare(right, "en"),
+    ),
+    hasNonString,
+  };
+}
+
+function formatStringLiteralUnion(literals: string[]): string {
+  return literals.map((literal) => formatLuauString(literal)).join(" | ");
+}
+
+function selectOrStatusPropertyToLuauType(
+  propertyName: string,
+  records: LuauRecord[],
+  emptyValue: EmptyValueMode,
+  notionType: string,
+): string {
+  const { literals, hasNonString } = collectStringLiteralsFromRecords(
+    propertyName,
+    records,
+    emptyValue,
+    notionType,
+  );
+
+  if (hasNonString || literals.length === 0) {
+    return "string";
+  }
+
+  return formatStringLiteralUnion(literals);
+}
+
+function multiSelectPropertyToLuauType(
+  propertyName: string,
+  records: LuauRecord[],
+): string {
+  const { literals, hasNonString } = collectMultiSelectLiteralsFromRecords(
+    propertyName,
+    records,
+  );
+
+  if (hasNonString || literals.length === 0) {
+    return "{ string }";
+  }
+
+  return `{ ${formatStringLiteralUnion(literals)} }`;
+}
+
 function exportablePropertyToLuauType(
   property: ExportableProperty,
   records: LuauRecord[],
+  emptyValue: EmptyValueMode,
 ): string {
+  if (property.notionType === "select" || property.notionType === "status") {
+    return selectOrStatusPropertyToLuauType(
+      property.name,
+      records,
+      emptyValue,
+      property.notionType,
+    );
+  }
+
+  if (property.notionType === "multi_select") {
+    return multiSelectPropertyToLuauType(property.name, records);
+  }
+
   if (property.robloxType) {
     const hasStringFallback = records.some((record) => {
       const value = record.properties[property.name];
@@ -259,6 +382,7 @@ function generateEntryType(
       const luauType = exportablePropertyToLuauType(
         property ?? { name: propertyName, notionType: "string" },
         records,
+        emptyValue,
       );
       const optionalSuffix = presentCount < records.length ? "?" : "";
 
