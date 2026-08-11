@@ -16,9 +16,11 @@ import type {
   ExportableProperty,
   GenerateModuleOptions,
   LuauRecord,
+  LuauTable,
   LuauValue,
 } from "./types.js";
 import {
+  isLuauSequenceArray,
   isLuauTable,
   isPropertyValuePresent,
   isStringArray,
@@ -74,17 +76,31 @@ function notionTypeToLuauType(notionType: string): string {
 
 function relationPropertyToLuauType(
   property: ExportableProperty,
+  records: LuauRecord[],
+  emptyValue: EmptyValueMode,
 ): string | null {
   if (!property.relationMeta) {
     return "{ [string]: any }";
   }
 
   if (property.relationMeta.kind === "scalar_dict") {
-    return `{ [string]: ${property.relationMeta.valueType} }`;
+    const valueType = resolveScalarRelationValueType(
+      property.relationMeta.valueNotionType,
+      property.relationMeta.valueType,
+      scalarRelationValues(property.name, records, "scalar_dict"),
+      emptyValue,
+    );
+    return `{ [string]: ${valueType} }`;
   }
 
   if (property.relationMeta.kind === "scalar_array") {
-    return `{ ${property.relationMeta.valueType} }`;
+    const valueType = resolveScalarRelationValueType(
+      property.relationMeta.valueNotionType,
+      property.relationMeta.valueType,
+      scalarRelationValues(property.name, records, "scalar_array"),
+      emptyValue,
+    );
+    return `{ ${valueType} }`;
   }
 
   if (property.relationMeta.kind === "nested_array") {
@@ -99,7 +115,15 @@ function relationPropertyToLuauType(
               (item) => item.name === propertyName,
             )
           : undefined;
-        const luauType = notionTypeToLuauType(entryProperty?.notionType ?? "string");
+        const luauType = entryProperty
+          ? entryPropertyToLuauType(
+              entryProperty,
+              property.name,
+              records,
+              emptyValue,
+              "nested_array",
+            )
+          : notionTypeToLuauType("string");
         const keyFormat = resolveLuauKeyFormat(propertyName);
         return `${formatLuauKey(propertyName, keyFormat)}: ${luauType}?,`;
       })
@@ -117,7 +141,15 @@ function relationPropertyToLuauType(
             (item) => item.name === propertyName,
           )
         : undefined;
-      const luauType = notionTypeToLuauType(entryProperty?.notionType ?? "string");
+      const luauType = entryProperty
+        ? entryPropertyToLuauType(
+            entryProperty,
+            property.name,
+            records,
+            emptyValue,
+            "nested_dict",
+          )
+        : notionTypeToLuauType("string");
       const keyFormat = resolveLuauKeyFormat(propertyName);
       return `${formatLuauKey(propertyName, keyFormat)}: ${luauType}?,`;
     })
@@ -126,17 +158,105 @@ function relationPropertyToLuauType(
   return `{ [string]: {\n${indentBlock(fieldLines)}\n} }`;
 }
 
-function collectStringLiteralsFromRecords(
+function* topLevelPropertyValues(
   propertyName: string,
   records: LuauRecord[],
+): Generator<LuauValue | null | undefined> {
+  for (const record of records) {
+    yield record.properties[propertyName];
+  }
+}
+
+function* nestedRelationEntryValues(
+  relationPropertyName: string,
+  entryPropertyName: string,
+  records: LuauRecord[],
+  kind: "nested_dict" | "nested_array",
+): Generator<LuauValue | null | undefined> {
+  for (const record of records) {
+    const relationValue = record.properties[relationPropertyName];
+    if (relationValue === null || relationValue === undefined) {
+      continue;
+    }
+
+    if (kind === "nested_dict") {
+      if (!isLuauTable(relationValue)) {
+        yield relationValue;
+        continue;
+      }
+
+      for (const nestedValue of Object.values(relationValue)) {
+        if (!isLuauTable(nestedValue)) {
+          yield nestedValue;
+          continue;
+        }
+
+        const nestedTable: LuauTable = nestedValue;
+        yield nestedTable[entryPropertyName];
+      }
+      continue;
+    }
+
+    if (!isLuauSequenceArray(relationValue)) {
+      yield relationValue;
+      continue;
+    }
+
+    for (const nestedValue of relationValue) {
+      if (!isLuauTable(nestedValue)) {
+        yield nestedValue;
+        continue;
+      }
+
+      const nestedTable: LuauTable = nestedValue;
+      yield nestedTable[entryPropertyName];
+    }
+  }
+}
+
+function* scalarRelationValues(
+  relationPropertyName: string,
+  records: LuauRecord[],
+  kind: "scalar_dict" | "scalar_array",
+): Generator<LuauValue | null | undefined> {
+  for (const record of records) {
+    const relationValue = record.properties[relationPropertyName];
+    if (relationValue === null || relationValue === undefined) {
+      continue;
+    }
+
+    if (kind === "scalar_dict") {
+      if (!isLuauTable(relationValue)) {
+        yield relationValue;
+        continue;
+      }
+
+      for (const scalarValue of Object.values(relationValue)) {
+        yield scalarValue;
+      }
+      continue;
+    }
+
+    if (!Array.isArray(relationValue)) {
+      yield relationValue;
+      continue;
+    }
+
+    for (const scalarValue of relationValue) {
+      yield scalarValue;
+    }
+  }
+}
+
+function collectStringLiteralsFromValues(
+  values: Iterable<LuauValue | null | undefined>,
   emptyValue: EmptyValueMode,
   notionType: string,
 ): { literals: string[]; hasNonString: boolean } {
   const literalSet = new Set<string>();
   let hasNonString = false;
 
-  for (const record of records) {
-    const value = record.properties[propertyName];
+  for (const value of values) {
     if (value === null) {
       if (emptyValue === "empty_string" && isStringLikeNotionType(notionType)) {
         literalSet.add("");
@@ -162,15 +282,13 @@ function collectStringLiteralsFromRecords(
   };
 }
 
-function collectMultiSelectLiteralsFromRecords(
-  propertyName: string,
-  records: LuauRecord[],
+function collectMultiSelectLiteralsFromValues(
+  values: Iterable<LuauValue | null | undefined>,
 ): { literals: string[]; hasNonString: boolean } {
   const literalSet = new Set<string>();
   let hasNonString = false;
 
-  for (const record of records) {
-    const value = record.properties[propertyName];
+  for (const value of values) {
     if (value === null || value === undefined) {
       continue;
     }
@@ -196,40 +314,72 @@ function formatStringLiteralUnion(literals: string[]): string {
   return literals.map((literal) => formatLuauString(literal)).join(" | ");
 }
 
-function selectOrStatusPropertyToLuauType(
-  propertyName: string,
-  records: LuauRecord[],
-  emptyValue: EmptyValueMode,
+function exportablePropertyToLuauTypeFromNotionType(
   notionType: string,
+  values: Iterable<LuauValue | null | undefined>,
+  emptyValue: EmptyValueMode,
 ): string {
-  const { literals, hasNonString } = collectStringLiteralsFromRecords(
-    propertyName,
-    records,
-    emptyValue,
-    notionType,
-  );
+  if (notionType === "select" || notionType === "status") {
+    const { literals, hasNonString } = collectStringLiteralsFromValues(
+      values,
+      emptyValue,
+      notionType,
+    );
 
-  if (hasNonString || literals.length === 0) {
-    return "string";
+    if (hasNonString || literals.length === 0) {
+      return "string";
+    }
+
+    return formatStringLiteralUnion(literals);
   }
 
-  return formatStringLiteralUnion(literals);
+  if (notionType === "multi_select") {
+    const { literals, hasNonString } = collectMultiSelectLiteralsFromValues(values);
+
+    if (hasNonString || literals.length === 0) {
+      return "{ string }";
+    }
+
+    return `{ ${formatStringLiteralUnion(literals)} }`;
+  }
+
+  return notionTypeToLuauType(notionType);
 }
 
-function multiSelectPropertyToLuauType(
-  propertyName: string,
-  records: LuauRecord[],
+function resolveScalarRelationValueType(
+  valueNotionType: string | undefined,
+  fallbackValueType: string,
+  values: Iterable<LuauValue | null | undefined>,
+  emptyValue: EmptyValueMode,
 ): string {
-  const { literals, hasNonString } = collectMultiSelectLiteralsFromRecords(
-    propertyName,
-    records,
-  );
-
-  if (hasNonString || literals.length === 0) {
-    return "{ string }";
+  if (!valueNotionType) {
+    return fallbackValueType;
   }
 
-  return `{ ${formatStringLiteralUnion(literals)} }`;
+  return exportablePropertyToLuauTypeFromNotionType(
+    valueNotionType,
+    values,
+    emptyValue,
+  );
+}
+
+function entryPropertyToLuauType(
+  entryProperty: ExportableProperty,
+  relationPropertyName: string,
+  records: LuauRecord[],
+  emptyValue: EmptyValueMode,
+  kind: "nested_dict" | "nested_array",
+): string {
+  return exportablePropertyToLuauTypeFromNotionType(
+    entryProperty.notionType,
+    nestedRelationEntryValues(
+      relationPropertyName,
+      entryProperty.name,
+      records,
+      kind,
+    ),
+    emptyValue,
+  );
 }
 
 function exportablePropertyToLuauType(
@@ -238,16 +388,19 @@ function exportablePropertyToLuauType(
   emptyValue: EmptyValueMode,
 ): string {
   if (property.notionType === "select" || property.notionType === "status") {
-    return selectOrStatusPropertyToLuauType(
-      property.name,
-      records,
-      emptyValue,
+    return exportablePropertyToLuauTypeFromNotionType(
       property.notionType,
+      topLevelPropertyValues(property.name, records),
+      emptyValue,
     );
   }
 
   if (property.notionType === "multi_select") {
-    return multiSelectPropertyToLuauType(property.name, records);
+    return exportablePropertyToLuauTypeFromNotionType(
+      "multi_select",
+      topLevelPropertyValues(property.name, records),
+      emptyValue,
+    );
   }
 
   if (property.robloxType) {
@@ -262,7 +415,7 @@ function exportablePropertyToLuauType(
   }
 
   if (property.notionType === "relation") {
-    return relationPropertyToLuauType(property) ?? "{ [string]: any }";
+    return relationPropertyToLuauType(property, records, emptyValue) ?? "{ [string]: any }";
   }
 
   return notionTypeToLuauType(property.notionType);

@@ -50,7 +50,7 @@ describe("inferRelationArrayMeta", () => {
         record("A", { scores: [1, 2] }),
         record("B", { scores: [3] }),
       ]),
-      { kind: "scalar_array", valueType: "number" },
+      { kind: "scalar_array", valueType: "number", valueNotionType: "number" },
     );
   });
 
@@ -60,7 +60,7 @@ describe("inferRelationArrayMeta", () => {
         record("A", { flags: [true] }),
         record("B", { flags: [false, true] }),
       ]),
-      { kind: "scalar_array", valueType: "boolean" },
+      { kind: "scalar_array", valueType: "boolean", valueNotionType: "checkbox" },
     );
   });
 
@@ -83,7 +83,7 @@ describe("inferRelationArrayMeta", () => {
           positions: [{ kind: "Vector3", x: 4, y: 5, z: 6 }],
         }),
       ]),
-      { kind: "scalar_array", valueType: "string" },
+      { kind: "scalar_array", valueType: "string", valueNotionType: "rich_text" },
     );
   });
 

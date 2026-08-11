@@ -673,3 +673,123 @@ describe("generateModuleScript select/status/multi_select literal unions", () =>
     assert.doesNotMatch(output, /tags: \{ "Fire"/);
   });
 });
+
+describe("generateModuleScript relation literal unions", () => {
+  it("emits select literal unions for nested_dict relation entries", () => {
+    const records: LuauRecord[] = [
+      {
+        key: "Sword",
+        keyFormat: "identifier",
+        properties: {
+          Effects: {
+            Fire: { element: "Fire", Power: 10 },
+            Ice: { element: "Ice", Power: 5 },
+          },
+        },
+      },
+    ];
+
+    const output = generate(records, "weapons", [
+      {
+        name: "Effects",
+        notionType: "relation",
+        relationMeta: {
+          kind: "nested_dict",
+          entryProperties: [
+            { name: "element", notionType: "select" },
+            { name: "Power", notionType: "number" },
+          ],
+        },
+      },
+    ]);
+
+    assert.match(
+      output,
+      /Effects: \{ \[string\]: \{\s*element: "Fire" \| "Ice"\?,/s,
+    );
+    assert.match(output, /Power: number\?,/);
+  });
+
+  it("emits select literal unions for scalar_dict relation values", () => {
+    const records: LuauRecord[] = [
+      {
+        key: "Sword",
+        keyFormat: "identifier",
+        properties: {
+          WeaponTypes: {
+            Primary: "melee",
+            Secondary: "ranged",
+          },
+        },
+      },
+    ];
+
+    const output = generate(records, "weapons", [
+      {
+        name: "WeaponTypes",
+        notionType: "relation",
+        relationMeta: {
+          kind: "scalar_dict",
+          valueType: "string",
+          valueNotionType: "select",
+        },
+      },
+    ]);
+
+    assert.match(output, /WeaponTypes: \{ \[string\]: "melee" \| "ranged" \}/);
+  });
+
+  it("emits select literal unions for scalar_array relation values", () => {
+    const records: LuauRecord[] = [
+      {
+        key: "Sword",
+        keyFormat: "identifier",
+        properties: {
+          Tags: ["melee", "ranged", "melee"],
+        },
+      },
+    ];
+
+    const output = generate(records, "weapons", [
+      {
+        name: "Tags",
+        notionType: "relation",
+        relationMeta: {
+          kind: "scalar_array",
+          valueType: "string",
+          valueNotionType: "select",
+        },
+      },
+    ]);
+
+    assert.match(output, /Tags: \{ "melee" \| "ranged" \}/);
+  });
+
+  it("emits multi_select literal unions for nested_array relation entries", () => {
+    const records: LuauRecord[] = [
+      {
+        key: "SpellA",
+        keyFormat: "identifier",
+        properties: {
+          Tags: [
+            { labels: ["Fire"] },
+            { labels: ["Ice", "Fire"] },
+          ],
+        },
+      },
+    ];
+
+    const output = generate(records, "spells", [
+      {
+        name: "Tags",
+        notionType: "relation",
+        relationMeta: {
+          kind: "nested_array",
+          entryProperties: [{ name: "labels", notionType: "multi_select" }],
+        },
+      },
+    ]);
+
+    assert.match(output, /labels: \{ "Fire" \| "Ice" \}/);
+  });
+});

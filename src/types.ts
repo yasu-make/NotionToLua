@@ -94,6 +94,7 @@ export type RelationPropertyMeta =
   | {
       kind: "scalar_dict";
       valueType: string;
+      valueNotionType?: string;
     }
   | {
       kind: "nested_dict";
@@ -102,6 +103,7 @@ export type RelationPropertyMeta =
   | {
       kind: "scalar_array";
       valueType: string;
+      valueNotionType?: string;
     }
   | {
       kind: "nested_array";
