@@ -200,7 +200,11 @@ describe("inferNotionSchema", () => {
         name: "items",
         notionType: "relation",
         notionPropertyName: formatArrayRelationPropertyName("items"),
-        relationMeta: { kind: "scalar_array", valueType: "number" },
+        relationMeta: {
+          kind: "scalar_array",
+          valueType: "number",
+          valueNotionType: "number",
+        },
       },
     ]);
   });

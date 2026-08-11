@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Select/status/multi-select literal unions** — When `export_types = true`, generated entry types use string literal unions derived from actual record values for `select`, `status`, and `multi_select` properties, including relation-embedded scalar and nested entry fields.
+
 ## [0.5.0] - 2026-07-29
 
 ### Added

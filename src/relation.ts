@@ -147,6 +147,7 @@ function buildScalarDictMeta(
   return {
     kind: "scalar_dict",
     valueType: notionTypeToLuauType(property?.notionType ?? "string"),
+    valueNotionType: property?.notionType,
   };
 }
 
@@ -207,6 +208,7 @@ function buildScalarArrayMeta(
   return {
     kind: "scalar_array",
     valueType: notionTypeToLuauType(property?.notionType ?? "string"),
+    valueNotionType: property?.notionType,
   };
 }
 

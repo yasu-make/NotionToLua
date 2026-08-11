@@ -416,3 +416,380 @@ describe("generateModuleScript", () => {
     assert.match(output, /\[2\] = \{/);
   });
 });
+
+describe("generateModuleScript select/status/multi_select literal unions", () => {
+  it("emits select literal union from record values", () => {
+    const records: LuauRecord[] = [
+      {
+        key: "Sword",
+        keyFormat: "identifier",
+        properties: { weaponType: "melee" },
+      },
+      {
+        key: "Bow",
+        keyFormat: "identifier",
+        properties: { weaponType: "ranged" },
+      },
+    ];
+
+    const output = generate(records, "weapons", [
+      { name: "weaponType", notionType: "select" },
+    ]);
+
+    assert.match(output, /weaponType: "melee" \| "ranged",/);
+  });
+
+  it("emits status literal union from record values", () => {
+    const records: LuauRecord[] = [
+      {
+        key: "TaskA",
+        keyFormat: "identifier",
+        properties: { status: "Done" },
+      },
+      {
+        key: "TaskB",
+        keyFormat: "identifier",
+        properties: { status: "In Progress" },
+      },
+    ];
+
+    const output = generate(records, "tasks", [
+      { name: "status", notionType: "status" },
+    ]);
+
+    assert.match(output, /status: "Done" \| "In Progress",/);
+  });
+
+  it("emits multi_select literal union wrapped in array type", () => {
+    const records: LuauRecord[] = [
+      {
+        key: "SpellA",
+        keyFormat: "identifier",
+        properties: { elements: ["Fire"] },
+      },
+      {
+        key: "SpellB",
+        keyFormat: "identifier",
+        properties: { elements: ["Ice", "Fire"] },
+      },
+    ];
+
+    const output = generate(records, "spells", [
+      { name: "elements", notionType: "multi_select" },
+    ]);
+
+    assert.match(output, /elements: \{ "Fire" \| "Ice" \},/);
+  });
+
+  it("emits a single literal without union separator for one select value", () => {
+    const records: LuauRecord[] = [
+      {
+        key: "Sword",
+        keyFormat: "identifier",
+        properties: { weaponType: "melee" },
+      },
+    ];
+
+    const output = generate(records, "weapons", [
+      { name: "weaponType", notionType: "select" },
+    ]);
+
+    assert.match(output, /weaponType: "melee",/);
+    assert.doesNotMatch(output, /weaponType: "melee" \|/);
+  });
+
+  it("sorts literal union members with en locale", () => {
+    const records: LuauRecord[] = [
+      {
+        key: "Z",
+        keyFormat: "identifier",
+        properties: { tier: "Zebra" },
+      },
+      {
+        key: "A",
+        keyFormat: "identifier",
+        properties: { tier: "Alpha" },
+      },
+    ];
+
+    const output = generate(records, "items", [
+      { name: "tier", notionType: "select" },
+    ]);
+
+    assert.match(output, /tier: "Alpha" \| "Zebra",/);
+  });
+
+  it("escapes special characters in literal unions", () => {
+    const records: LuauRecord[] = [
+      {
+        key: "Greeting",
+        keyFormat: "identifier",
+        properties: { phrase: 'say "hi"' },
+      },
+    ];
+
+    const output = generate(records, "quotes", [
+      { name: "phrase", notionType: "select" },
+    ]);
+
+    assert.match(output, /phrase: "say \\"hi\\"",/);
+  });
+
+  it("omits literal union type definitions when exportTypes is false", () => {
+    const records: LuauRecord[] = [
+      {
+        key: "Sword",
+        keyFormat: "identifier",
+        properties: { weaponType: "melee" },
+      },
+    ];
+
+    const output = generate(
+      records,
+      "weapons",
+      [{ name: "weaponType", notionType: "select" }],
+      false,
+    );
+
+    assert.doesNotMatch(output, /export type/);
+    assert.doesNotMatch(output, /weaponType:/);
+    assert.match(output, /weaponType = "melee",/);
+  });
+
+  it("includes empty string in select union when empty_value is empty_string and value is null", () => {
+    const records: LuauRecord[] = [
+      {
+        key: "Unset",
+        keyFormat: "identifier",
+        properties: { weaponType: null },
+      },
+      {
+        key: "Melee",
+        keyFormat: "identifier",
+        properties: { weaponType: "melee" },
+      },
+    ];
+
+    const output = generate(
+      records,
+      "weapons",
+      [{ name: "weaponType", notionType: "select" }],
+      true,
+      { emptyValue: "empty_string" },
+    );
+
+    assert.match(output, /weaponType: "" \| "melee",/);
+    assert.match(output, /weaponType = "",/);
+  });
+
+  it("marks select fields optional when only some records have values", () => {
+    const records: LuauRecord[] = [
+      {
+        key: "Sword",
+        keyFormat: "identifier",
+        properties: { weaponType: "melee" },
+      },
+      {
+        key: "Unknown",
+        keyFormat: "identifier",
+        properties: {},
+      },
+    ];
+
+    const output = generate(records, "weapons", [
+      { name: "weaponType", notionType: "select" },
+    ]);
+
+    assert.match(output, /weaponType: "melee"\?,/);
+  });
+
+  it("falls back to string when select values include non-string types", () => {
+    const records: LuauRecord[] = [
+      {
+        key: "Bad",
+        keyFormat: "identifier",
+        properties: { weaponType: 42 },
+      },
+      {
+        key: "Good",
+        keyFormat: "identifier",
+        properties: { weaponType: "melee" },
+      },
+    ];
+
+    const output = generate(records, "weapons", [
+      { name: "weaponType", notionType: "select" },
+    ]);
+
+    assert.match(output, /weaponType: string,/);
+    assert.doesNotMatch(output, /weaponType: "melee"/);
+  });
+
+  it("does not include empty string when property key is missing under empty_string", () => {
+    const records: LuauRecord[] = [
+      {
+        key: "Unknown",
+        keyFormat: "identifier",
+        properties: {},
+      },
+      {
+        key: "Melee",
+        keyFormat: "identifier",
+        properties: { weaponType: "melee" },
+      },
+    ];
+
+    const output = generate(
+      records,
+      "weapons",
+      [{ name: "weaponType", notionType: "select" }],
+      true,
+      { emptyValue: "empty_string" },
+    );
+
+    assert.match(output, /weaponType: "melee"\?,/);
+    assert.doesNotMatch(output, /""/);
+  });
+
+  it("falls back to { string } when multi_select values include non-string types", () => {
+    const records: LuauRecord[] = [
+      {
+        key: "Bad",
+        keyFormat: "identifier",
+        properties: { tags: 42 },
+      },
+      {
+        key: "Good",
+        keyFormat: "identifier",
+        properties: { tags: ["Fire", "Ice"] },
+      },
+    ];
+
+    const output = generate(records, "items", [
+      { name: "tags", notionType: "multi_select" },
+    ]);
+
+    assert.match(output, /tags: \{ string \},/);
+    assert.doesNotMatch(output, /tags: \{ "Fire"/);
+  });
+});
+
+describe("generateModuleScript relation literal unions", () => {
+  it("emits select literal unions for nested_dict relation entries", () => {
+    const records: LuauRecord[] = [
+      {
+        key: "Sword",
+        keyFormat: "identifier",
+        properties: {
+          Effects: {
+            Fire: { element: "Fire", Power: 10 },
+            Ice: { element: "Ice", Power: 5 },
+          },
+        },
+      },
+    ];
+
+    const output = generate(records, "weapons", [
+      {
+        name: "Effects",
+        notionType: "relation",
+        relationMeta: {
+          kind: "nested_dict",
+          entryProperties: [
+            { name: "element", notionType: "select" },
+            { name: "Power", notionType: "number" },
+          ],
+        },
+      },
+    ]);
+
+    assert.match(
+      output,
+      /Effects: \{ \[string\]: \{\s*element: "Fire" \| "Ice"\?,/s,
+    );
+    assert.match(output, /Power: number\?,/);
+  });
+
+  it("emits select literal unions for scalar_dict relation values", () => {
+    const records: LuauRecord[] = [
+      {
+        key: "Sword",
+        keyFormat: "identifier",
+        properties: {
+          WeaponTypes: {
+            Primary: "melee",
+            Secondary: "ranged",
+          },
+        },
+      },
+    ];
+
+    const output = generate(records, "weapons", [
+      {
+        name: "WeaponTypes",
+        notionType: "relation",
+        relationMeta: {
+          kind: "scalar_dict",
+          valueType: "string",
+          valueNotionType: "select",
+        },
+      },
+    ]);
+
+    assert.match(output, /WeaponTypes: \{ \[string\]: "melee" \| "ranged" \}/);
+  });
+
+  it("emits select literal unions for scalar_array relation values", () => {
+    const records: LuauRecord[] = [
+      {
+        key: "Sword",
+        keyFormat: "identifier",
+        properties: {
+          Tags: ["melee", "ranged", "melee"],
+        },
+      },
+    ];
+
+    const output = generate(records, "weapons", [
+      {
+        name: "Tags",
+        notionType: "relation",
+        relationMeta: {
+          kind: "scalar_array",
+          valueType: "string",
+          valueNotionType: "select",
+        },
+      },
+    ]);
+
+    assert.match(output, /Tags: \{ "melee" \| "ranged" \}/);
+  });
+
+  it("emits multi_select literal unions for nested_array relation entries", () => {
+    const records: LuauRecord[] = [
+      {
+        key: "SpellA",
+        keyFormat: "identifier",
+        properties: {
+          Tags: [
+            { labels: ["Fire"] },
+            { labels: ["Ice", "Fire"] },
+          ],
+        },
+      },
+    ];
+
+    const output = generate(records, "spells", [
+      {
+        name: "Tags",
+        notionType: "relation",
+        relationMeta: {
+          kind: "nested_array",
+          entryProperties: [{ name: "labels", notionType: "multi_select" }],
+        },
+      },
+    ]);
+
+    assert.match(output, /labels: \{ "Fire" \| "Ice" \}/);
+  });
+});

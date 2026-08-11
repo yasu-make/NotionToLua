@@ -163,6 +163,7 @@ export function inferRelationArrayMeta(
   return {
     kind: "scalar_array",
     valueType: notionTypeToLuauType(scalarType ?? "string"),
+    ...(scalarType !== undefined ? { valueNotionType: scalarType } : {}),
   };
 }
 
