@@ -59,7 +59,7 @@ Or add both to your project's `rokit.toml`:
 ```toml
 [tools]
 StyLua = "JohnnyMorganz/StyLua@2.5.2"
-ntn-lua = "Zac134/NotionToLua@0.5.0"
+ntn-lua = "Zac134/NotionToLua@0.6.0"
 ```
 
 ```bash
@@ -589,7 +589,7 @@ Release artifacts are standalone Bun-compiled binaries packaged as Rokit-compati
 Prerequisites: [Bun](https://bun.sh) on `PATH`, and `zip` or Python 3
 
 ```bash
-bun run compile -- 0.5.0 bun-darwin-arm64 ./release
+bun run compile -- 0.6.0 bun-darwin-arm64 ./release
 ```
 
 | `bun-target` | Zip suffix |
@@ -608,13 +608,13 @@ Output: `NotionToLua-<version>-<os>-<arch>.zip` containing a single `NotionToLua
 1. Confirm tests pass: `bun test`
 2. Tag and push:
    ```bash
-   git tag v0.5.0
-   git push origin v0.5.0
+   git tag v0.6.0
+   git push origin v0.6.0
    ```
 3. GitHub Actions builds all six targets and attaches zip assets to the Release
 4. Verify from a clean Roblox project:
    ```bash
-   rokit add Zac134/NotionToLua@0.5.0 ntn-lua
+   rokit add Zac134/NotionToLua@0.6.0 ntn-lua
    rokit add JohnnyMorganz/StyLua
    rokit install
    ntn-lua --help
