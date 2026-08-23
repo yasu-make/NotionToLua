@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-08-23
+
 ### Added
 
 - **Named targets** — Configure multiple database/output pairs as `[targets.<key>]` and run `ntn-lua <key>`, or `ntn-lua` with no key to generate every target. Optional `[targets.<key>.emit]` overrides global `[emit]` for that target.
