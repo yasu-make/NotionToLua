@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Named targets** — Configure multiple database/output pairs as `[targets.<key>]` and run `ntn-lua <key>`, or `ntn-lua` with no key to generate every target. Optional `[targets.<key>.emit]` overrides global `[emit]` for that target.
+- **Skip prefix `[Skip]`** — Notion columns whose names start with `[Skip]` are not emitted to Luau, so you can keep documentation-only fields in the database.
+
+### Changed
+
+- **`ntn-lua init` template** — Writes `[targets.example]` plus `[emit]` instead of a single `[source]` / `[paths]` pair. Legacy sectioned and flat configs remain readable; mixing `[targets]` with `[source]` / `[paths]` is rejected.
+
+### Fixed
+
+- **Optional types** — Properties with null/empty cells on some records now emit `T?` even when `empty_value = "nil"`.
+
 ## [0.6.0] - 2026-08-11
 
 ### Added

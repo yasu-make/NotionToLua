@@ -40,6 +40,7 @@ export async function generateLuauCode(
   options: GenerateLuauCodeOptions,
 ): Promise<GenerateLuauCodeResult> {
   const config = options.config ?? {
+    namedTargets: {},
     format: true,
     exportTypes: true,
     emptyValue: "omit",

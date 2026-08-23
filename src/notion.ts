@@ -14,6 +14,7 @@ import {
 } from "./typed-rich-text.js";
 import {
   SUPPORTED_PROPERTY_TYPES,
+  isSkippedPropertyName,
   type ExportableProperty,
   type LuauRecord,
   type LuauValue,
@@ -427,6 +428,7 @@ export function listExportableProperties(
     .filter(
       ([propertyName, property]) =>
         propertyName !== titlePropertyName &&
+        !isSkippedPropertyName(propertyName) &&
         SUPPORTED_PROPERTY_TYPES.has(property.type),
     )
     .map(([propertyName, property]) =>

@@ -4,7 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, it } from "node:test";
 
-import { loadUserConfig } from "../src/config.js";
+import { loadUserConfig, resolvePullJobs } from "../src/config.js";
+import type { ResolvedUserConfig } from "../src/config.js";
 import { NotionToLuaError } from "../src/errors.js";
 
 function withTempConfig(
@@ -28,6 +29,7 @@ describe("loadUserConfig", () => {
   it("returns defaults when ntn-lua.toml is missing", () => {
     withTempConfig(null, (cwd) => {
       assert.deepEqual(loadUserConfig(cwd), {
+        namedTargets: {},
         format: true,
         exportTypes: true,
         emptyValue: "omit",
@@ -50,6 +52,7 @@ omit_array_index = true
 `,
       (cwd) => {
         assert.deepEqual(loadUserConfig(cwd), {
+          namedTargets: {},
           databaseId: "db-123",
           pageId: "page-456",
           output: "./out",
@@ -81,6 +84,7 @@ omit_array_index = true
 `,
       (cwd) => {
         assert.deepEqual(loadUserConfig(cwd), {
+          namedTargets: {},
           databaseId: "db-123",
           pageId: "page-456",
           output: "./out",
@@ -331,4 +335,350 @@ relation = "embed"
       );
     });
   });
+
+  it("reads named targets from ntn-lua.toml", () => {
+    withTempConfig(
+      `[emit]
+format = false
+
+[targets.weapons]
+database_id = "db-weapons"
+output = "src/Weapons.luau"
+
+[targets.items]
+database_id = "db-items"
+output = "src/Items.luau"
+code_block_parent_page_id = "page-items"
+`,
+      (cwd) => {
+        assert.deepEqual(loadUserConfig(cwd), {
+          namedTargets: {
+            weapons: {
+              databaseId: "db-weapons",
+              output: "src/Weapons.luau",
+            },
+            items: {
+              databaseId: "db-items",
+              output: "src/Items.luau",
+              pageId: "page-items",
+            },
+          },
+          format: false,
+          exportTypes: true,
+          emptyValue: "omit",
+          emptyRelation: "omit",
+          omitArrayIndex: false,
+        });
+      },
+    );
+  });
+
+  it("throws when [targets] is mixed with [source] or [paths]", () => {
+    withTempConfig(
+      `[source]
+database_id = "db-123"
+
+[targets.weapons]
+database_id = "db-weapons"
+output = "src/Weapons.luau"
+`,
+      (cwd) => {
+        assert.throws(
+          () => loadUserConfig(cwd),
+          (error: unknown) => {
+            assert.ok(error instanceof NotionToLuaError);
+            assert.match(
+              (error as NotionToLuaError).message,
+              /Cannot mix "\[targets\]" with "\[source\]" or "\[paths\]"/,
+            );
+            return true;
+          },
+        );
+      },
+    );
+  });
+
+  it("throws when a named target is missing database_id", () => {
+    withTempConfig(
+      `[targets.weapons]
+output = "src/Weapons.luau"
+`,
+      (cwd) => {
+        assert.throws(
+          () => loadUserConfig(cwd),
+          (error: unknown) => {
+            assert.ok(error instanceof NotionToLuaError);
+            assert.match(
+              (error as NotionToLuaError).message,
+              /Missing "database_id" in "\[targets\.weapons\]"/,
+            );
+            return true;
+          },
+        );
+      },
+    );
+  });
+
+  it("throws when a target key is a reserved command name", () => {
+    withTempConfig(
+      `[targets.push]
+database_id = "db-123"
+`,
+      (cwd) => {
+        assert.throws(
+          () => loadUserConfig(cwd),
+          (error: unknown) => {
+            assert.ok(error instanceof NotionToLuaError);
+            assert.match(
+              (error as NotionToLuaError).message,
+              /reserved command name/,
+            );
+            return true;
+          },
+        );
+      },
+    );
+  });
+
+  it("reads per-target emit overrides", () => {
+    withTempConfig(
+      `[emit]
+format = true
+export_types = true
+empty_value = "omit"
+
+[targets.weapons]
+database_id = "db-weapons"
+output = "src/Weapons.luau"
+
+[targets.weapons.emit]
+empty_value = "nil"
+format = false
+
+[targets.items]
+database_id = "db-items"
+output = "src/Items.luau"
+`,
+      (cwd) => {
+        const config = loadUserConfig(cwd);
+        assert.equal(config.format, true);
+        assert.equal(config.emptyValue, "omit");
+        assert.deepEqual(config.namedTargets.weapons, {
+          databaseId: "db-weapons",
+          output: "src/Weapons.luau",
+          format: false,
+          emptyValue: "nil",
+        });
+        assert.deepEqual(config.namedTargets.items, {
+          databaseId: "db-items",
+          output: "src/Items.luau",
+        });
+      },
+    );
+  });
+
+  it("throws for unknown keys in [targets.<key>.emit]", () => {
+    withTempConfig(
+      `[targets.weapons]
+database_id = "db-weapons"
+
+[targets.weapons.emit]
+unknown_key = true
+`,
+      (cwd) => {
+        assert.throws(
+          () => loadUserConfig(cwd),
+          (error: unknown) => {
+            assert.ok(error instanceof NotionToLuaError);
+            assert.match(
+              (error as NotionToLuaError).message,
+              /Unknown key "unknown_key" in section "\[targets\.weapons\.emit\]"/,
+            );
+            return true;
+          },
+        );
+      },
+    );
+  });
 });
+
+const emitConfig: ResolvedUserConfig = {
+  namedTargets: {},
+  format: true,
+  exportTypes: true,
+  emptyValue: "omit",
+  emptyRelation: "omit",
+  omitArrayIndex: false,
+};
+
+const defaultJobEmit = {
+  format: true,
+  exportTypes: true,
+  emptyValue: "omit" as const,
+  emptyRelation: "omit" as const,
+  omitArrayIndex: false,
+};
+
+describe("resolvePullJobs", () => {
+  it("uses a named target key", () => {
+    const config: ResolvedUserConfig = {
+      ...emitConfig,
+      namedTargets: {
+        weapons: { databaseId: "db-weapons", output: "src/Weapons.luau" },
+        items: { databaseId: "db-items", output: "src/Items.luau" },
+      },
+    };
+
+    assert.deepEqual(resolvePullJobs({ positional: "items", config }), [
+      {
+        key: "items",
+        databaseId: "db-items",
+        output: "src/Items.luau",
+        ...defaultJobEmit,
+      },
+    ]);
+  });
+
+  it("returns every named target when no key is given", () => {
+    const config: ResolvedUserConfig = {
+      ...emitConfig,
+      namedTargets: {
+        weapons: { databaseId: "db-weapons", output: "src/Weapons.luau" },
+        items: { databaseId: "db-items", output: "src/Items.luau" },
+      },
+    };
+
+    assert.deepEqual(resolvePullJobs({ config }), [
+      {
+        key: "items",
+        databaseId: "db-items",
+        output: "src/Items.luau",
+        ...defaultJobEmit,
+      },
+      {
+        key: "weapons",
+        databaseId: "db-weapons",
+        output: "src/Weapons.luau",
+        ...defaultJobEmit,
+      },
+    ]);
+  });
+
+  it("throws for an unknown target key", () => {
+    const config: ResolvedUserConfig = {
+      ...emitConfig,
+      namedTargets: {
+        weapons: { databaseId: "db-weapons", output: "src/Weapons.luau" },
+      },
+    };
+
+    assert.throws(
+      () => resolvePullJobs({ positional: "missing", config }),
+      (error: unknown) => {
+        assert.ok(error instanceof NotionToLuaError);
+        assert.match(
+          (error as NotionToLuaError).message,
+          /Unknown target "missing".*weapons/,
+        );
+        return true;
+      },
+    );
+  });
+
+  it("throws when -o is used without a key and multiple targets exist", () => {
+    const config: ResolvedUserConfig = {
+      ...emitConfig,
+      namedTargets: {
+        weapons: { databaseId: "db-weapons", output: "src/Weapons.luau" },
+        items: { databaseId: "db-items", output: "src/Items.luau" },
+      },
+    };
+
+    assert.throws(
+      () => resolvePullJobs({ outputFlag: "./other.luau", config }),
+      (error: unknown) => {
+        assert.ok(error instanceof NotionToLuaError);
+        assert.match(
+          (error as NotionToLuaError).message,
+          /Cannot apply -o or -p to every target/,
+        );
+        return true;
+      },
+    );
+  });
+
+  it("overrides a named target with -d and -o", () => {
+    const config: ResolvedUserConfig = {
+      ...emitConfig,
+      namedTargets: {
+        weapons: { databaseId: "db-weapons", output: "src/Weapons.luau" },
+      },
+    };
+
+    assert.deepEqual(
+      resolvePullJobs({
+        positional: "weapons",
+        databaseFlag: "db-other",
+        outputFlag: "./other.luau",
+        config,
+      }),
+      [
+        {
+          key: "weapons",
+          databaseId: "db-other",
+          output: "./other.luau",
+          ...defaultJobEmit,
+        },
+      ],
+    );
+  });
+
+  it("treats positional as a database id for legacy configs", () => {
+    const config: ResolvedUserConfig = {
+      ...emitConfig,
+      databaseId: "from-config-db",
+      output: "./from-config",
+    };
+
+    assert.deepEqual(
+      resolvePullJobs({ positional: "from-positional", config }),
+      [
+        {
+          databaseId: "from-positional",
+          output: "./from-config",
+          ...defaultJobEmit,
+        },
+      ],
+    );
+  });
+
+  it("prefers per-target emit overrides over global [emit]", () => {
+    const config: ResolvedUserConfig = {
+      ...emitConfig,
+      emptyValue: "omit",
+      format: true,
+      namedTargets: {
+        weapons: {
+          databaseId: "db-weapons",
+          output: "src/Weapons.luau",
+          emptyValue: "nil",
+          format: false,
+        },
+      },
+    };
+
+    assert.deepEqual(resolvePullJobs({ positional: "weapons", config }), [
+      {
+        key: "weapons",
+        databaseId: "db-weapons",
+        output: "src/Weapons.luau",
+        format: false,
+        exportTypes: true,
+        emptyValue: "nil",
+        emptyRelation: "omit",
+        omitArrayIndex: false,
+      },
+    ]);
+  });
+});
+

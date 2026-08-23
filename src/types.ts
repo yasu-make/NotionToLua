@@ -129,6 +129,13 @@ export const SUPPORTED_PROPERTY_TYPES = new Set([
   "status",
 ]);
 
+/** Notion columns whose names start with this prefix are not synced to Luau. */
+export const SKIP_PROPERTY_PREFIX = "[Skip]";
+
+export function isSkippedPropertyName(propertyName: string): boolean {
+  return propertyName.startsWith(SKIP_PROPERTY_PREFIX);
+}
+
 const STRING_LIKE_NOTION_TYPES = new Set([
   "rich_text",
   "select",

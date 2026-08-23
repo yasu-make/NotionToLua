@@ -4,6 +4,7 @@ import { describe, it } from "node:test";
 import {
   formatMissingPropertyValue,
   isLuauSequenceArray,
+  isSkippedPropertyName,
 } from "../src/types.js";
 
 describe("isLuauSequenceArray", () => {
@@ -39,5 +40,20 @@ describe("formatMissingPropertyValue", () => {
   it("returns null for omit mode", () => {
     assert.equal(formatMissingPropertyValue("omit", "rich_text"), null);
     assert.equal(formatMissingPropertyValue("omit", "number"), null);
+  });
+});
+
+describe("isSkippedPropertyName", () => {
+  it("skips names that start with [Skip]", () => {
+    assert.equal(isSkippedPropertyName("[Skip] Notes"), true);
+    assert.equal(isSkippedPropertyName("[Skip]設計メモ"), true);
+    assert.equal(isSkippedPropertyName("[Skip]"), true);
+  });
+
+  it("does not skip names without the prefix", () => {
+    assert.equal(isSkippedPropertyName("Notes"), false);
+    assert.equal(isSkippedPropertyName("Skip Notes"), false);
+    assert.equal(isSkippedPropertyName("Notes [Skip]"), false);
+    assert.equal(isSkippedPropertyName("Position [Vector3]"), false);
   });
 });

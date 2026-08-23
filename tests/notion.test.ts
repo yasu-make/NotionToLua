@@ -415,6 +415,42 @@ describe("pagesToLuauRecords", () => {
     });
   });
 
+  it("skips properties whose names start with [Skip]", () => {
+    const dataSource = createDataSource({
+      Count: {
+        id: "count",
+        name: "Count",
+        type: "number",
+        number: { format: "number" },
+        description: null,
+      },
+      "[Skip] Notes": {
+        id: "notes",
+        name: "[Skip] Notes",
+        type: "rich_text",
+        rich_text: {},
+        description: null,
+      },
+    });
+
+    const pages = [
+      createPage("ItemA", {
+        Count: { id: "count", type: "number", number: 3 },
+        "[Skip] Notes": {
+          id: "notes",
+          type: "rich_text",
+          rich_text: createRichText("design only"),
+        },
+      }),
+    ];
+
+    const records = pagesToLuauRecords(pages, dataSource);
+
+    assert.deepEqual(records[0]?.properties, {
+      Count: 3,
+    });
+  });
+
   it("throws when title values are duplicated", () => {
     const dataSource = createDataSource({
       Count: {

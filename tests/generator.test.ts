@@ -187,6 +187,62 @@ describe("generateModuleScript", () => {
     assert.match(output, /enabled: boolean\?,/);
   });
 
+  it("marks type fields optional when some records have null values", () => {
+    const records: LuauRecord[] = [
+      {
+        key: "ItemA",
+        keyFormat: "identifier",
+        properties: { count: 1, label: "a" },
+      },
+      {
+        key: "ItemB",
+        keyFormat: "identifier",
+        properties: { count: null, label: null },
+      },
+    ];
+
+    const output = generate(records, "testModule", [
+      { name: "count", notionType: "number" },
+      { name: "label", notionType: "rich_text" },
+    ]);
+
+    assert.match(output, /count: number\?,/);
+    assert.match(output, /label: string\?,/);
+    assert.match(output, /count = 1,/);
+    assert.doesNotMatch(output, /count = nil/);
+  });
+
+  it("marks type fields optional for null values when empty_value is nil", () => {
+    const records: LuauRecord[] = [
+      {
+        key: "ItemA",
+        keyFormat: "identifier",
+        properties: { count: 1, label: "a" },
+      },
+      {
+        key: "ItemB",
+        keyFormat: "identifier",
+        properties: { count: null, label: null },
+      },
+    ];
+
+    const output = generate(
+      records,
+      "testModule",
+      [
+        { name: "count", notionType: "number" },
+        { name: "label", notionType: "rich_text" },
+      ],
+      true,
+      { emptyValue: "nil" },
+    );
+
+    assert.match(output, /count: number\?,/);
+    assert.match(output, /label: string\?,/);
+    assert.match(output, /count = nil,/);
+    assert.match(output, /label = nil,/);
+  });
+
   it("uses bracket notation for invalid identifier keys", () => {
     const records: LuauRecord[] = [
       {

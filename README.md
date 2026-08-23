@@ -78,7 +78,7 @@ From your Rojo project root:
 ntn-lua init
 ```
 
-3. Edit `ntn-lua.toml` — set `database_id` and `output` at minimum.
+3. Edit `ntn-lua.toml` — add `[targets.<key>]` entries with `database_id` and `output` at minimum.
 
 Both files are read from `process.cwd()`, so run `ntn-lua` from the directory that contains them (typically the Rojo project root). `ntn-lua.toml` is **recommended** but **not required** when you pass `-d` / `-o` on the CLI.
 
@@ -100,7 +100,7 @@ Create a Notion integration and connect your database before the first sync — 
 
 5. **Database ID**: copy from the database URL — the 32-character hex segment (hyphens optional). If the database has multiple data sources, pass a `data_source_id` directly (see [Usage](#write-to-a-notion-code-block-default)).
 
-6. **Title column**: one Title-type property becomes each record's module key. Empty or duplicate titles are errors; exactly one Title column is expected. Numeric titles (`0`, `1`, `12` — same rules as array relations) are emitted as Luau numeric indexes (`[1]`, not `["1"]`) and sorted numerically. Set `omit_array_index = true` to drop indexes entirely when titles form a dense `1..N` sequence.
+6. **Title column**: one Title-type property becomes each record's module key. Empty or duplicate titles are errors; exactly one Title column is expected. Numeric titles (`0`, `1`, `12` — same rules as array relations) are emitted as Luau numeric indexes (`[1]`, not `["1"]`) and sorted numerically. Set `omit_array_index = true` to drop indexes entirely when titles form a dense `1..N` sequence. Prefix a non-title column with `[Skip]` (for example `[Skip] Design notes`) to keep it in Notion without syncing it to Luau.
 
 7. **Recommended for Roblox projects**: use `-o` for local file output. Connect the database to your integration; only the **Read content** capability is required — `ntn-lua` does not write back to Notion in file mode.
 
@@ -127,20 +127,21 @@ NOTION_API_TOKEN=secret_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 >
 > See [CHANGELOG.md](./CHANGELOG.md) and [Nested relations](./docs/nested-relations.md) for migration details.
 
-Settings are grouped into `[source]`, `[paths]`, and `[emit]` sections. Flat keys at the root are still accepted for backward compatibility; do not mix flat keys with section tables.
+Settings are grouped into `[targets.<key>]` (one database + output pair per key) and `[emit]`. Run `ntn-lua <key>` for one target, or `ntn-lua` to generate every target. Legacy `[source]` / `[paths]` and flat root keys still load as a single unnamed target; do not mix them with `[targets]`, and do not mix flat keys with section tables.
 
 | Section / key | Type | Default | Purpose |
 | --- | --- | --- | --- |
-| `[source]` `database_id` | string | — | Default `database_id` or `data_source_id` |
-| `[source]` `code_block_parent_page_id` | string | — | Notion page ID for code block mode |
-| `[paths]` `output` | string | — | Output directory or `.lua` / `.luau` file path |
+| `[targets.<key>]` `database_id` | string | — | Database or `data_source_id` for this target |
+| `[targets.<key>]` `output` | string | — | Output directory or `.lua` / `.luau` file path |
+| `[targets.<key>]` `code_block_parent_page_id` | string | — | Optional Notion page ID for code block output |
+| `[targets.<key>.emit]` | — | inherit `[emit]` | Per-target overrides of `format`, `export_types`, `empty_value`, `empty_relation`, `omit_array_index` |
 | `[emit]` `format` | boolean | `true` | Run StyLua formatting after generation |
 | `[emit]` `export_types` | boolean | `true` | Emit Luau `export type` definitions |
 | `[emit]` `empty_value` | string | `"omit"` | How to emit null values: `omit`, `nil`, or `empty_string` |
 | `[emit]` `empty_relation` | string | `"omit"` | How to emit empty relations: `omit` or `empty_table` |
 | `[emit]` `omit_array_index` | boolean | `false` | When all record Titles are numeric and form a dense `1..N` sequence, emit a keyless Luau array and `export type Module = { Entry }` instead of `[1]..[N]` keys |
 
-Flat `page_id` at the root is still accepted as a legacy alias for `code_block_parent_page_id`; do not set both.
+Legacy `[source]` `database_id` / `code_block_parent_page_id` and `[paths]` `output` remain readable. Flat `page_id` at the root is still accepted as a legacy alias for `code_block_parent_page_id`; do not set both. Target keys `init` and `push` are reserved.
 
 Unknown keys are rejected. If `ntn-lua.toml` is missing, `format` and `export_types` default to `true`; other keys stay unset. You can omit the file entirely and supply `-d` and `-o` on every run.
 
@@ -148,7 +149,7 @@ Relation columns are embedded automatically. See [Nested relations](./docs/neste
 
 #### Migration from v0.1.x
 
-1. Run `ntn-lua init` (or create `ntn-lua.toml` manually) and set `database_id` / `output` (replacing `NOTION_DATABASE_ID` / `NOTION_OUTPUT_DIR` in `.env`).
+1. Run `ntn-lua init` (or create `ntn-lua.toml` manually) and set `[targets.<key>]` `database_id` / `output` (replacing `NOTION_DATABASE_ID` / `NOTION_OUTPUT_DIR` in `.env`, or a previous single `[source]` / `[paths]` pair).
 2. If your database has **Relation columns**, expect new nested fields in generated Luau. Share related databases with your Notion integration.
 3. Optionally set `empty_value` and `empty_relation` — both default to `omit`.
 
@@ -156,24 +157,20 @@ Relation columns are embedded automatically. See [Nested relations](./docs/neste
 
 | Setting | Resolution order |
 | --- | --- |
-| `database_id` | `-d` / `--database-id` → positional argument → `ntn-lua.toml` |
-| `output` | `-o` / `--output` → `ntn-lua.toml` |
-| `code_block_parent_page_id` | `-p` / `--page-id` → `ntn-lua.toml` `[source]` (flat `page_id` still accepted) |
+| target | positional `<key>` → all `[targets]` when omitted → legacy single `database_id` / `output` |
+| `database_id` | `-d` / `--database-id` → selected target → positional (legacy configs only) → `ntn-lua.toml` |
+| `output` | `-o` / `--output` → selected target / `ntn-lua.toml` |
+| `code_block_parent_page_id` | `-p` / `--page-id` → selected target / `ntn-lua.toml` `[source]` (flat `page_id` still accepted) |
+| `[emit]` | `[targets.<key>.emit]` (set keys only) → `[emit]` |
 
-`format` and `export_types` are read from `ntn-lua.toml` only (no CLI flags).
+`format` and `export_types` are read from `ntn-lua.toml` only (no CLI flags). Per-target `[targets.<key>.emit]` keys override the global `[emit]` section; omitted keys keep the global value. With `[targets]`, a positional argument is a target key (unknown keys error). Use `-d` for an ad-hoc database id. `-o` / `-p` without a key are rejected when two or more targets are configured.
 
 Example `ntn-lua.toml`:
 
 ```toml
 # ntn-lua — run from the directory that contains this file.
-# CLI overrides: -d database_id, -p page, -o output.
-
-[source]
-database_id = "your-database-or-data-source-id"
-code_block_parent_page_id = "your-page-id"
-
-[paths]
-output = "src/shared/Config"
+# CLI: ntn-lua            (all targets)
+#      ntn-lua <key>      (one target)
 
 [emit]
 format = true
@@ -181,6 +178,17 @@ export_types = true
 empty_value = "omit"         # omit | nil | empty_string
 empty_relation = "omit"      # omit | empty_table
 omit_array_index = false
+
+[targets.weapons]
+database_id = "your-weapons-database-id"
+output = "src/shared/Config/Weapons.luau"
+
+[targets.items]
+database_id = "your-items-database-id"
+output = "src/shared/Config/Items.luau"
+
+[targets.items.emit]
+empty_value = "nil"          # overrides [emit] for this target only
 ```
 
 Run `ntn-lua init` to generate a template with default values in your project root.
@@ -188,10 +196,13 @@ Run `ntn-lua init` to generate a template with default values in your project ro
 ### First sync
 
 ```bash
-# Uses database_id and output from ntn-lua.toml
+# Generate every [targets.<key>] entry
 ntn-lua
 
-# Or pass options explicitly (overrides TOML)
+# Generate one target
+ntn-lua weapons
+
+# Or pass options explicitly (ad-hoc; does not use [targets])
 ntn-lua -d <DATABASE_ID> -o src/shared/Config/Weapons.luau
 ```
 
@@ -264,7 +275,7 @@ local function getDamage(weapon: WeaponEntry): number
 end
 ```
 
-Optional fields are inferred automatically: if a property is missing on some records but present on others, the generated type uses `?` (for example, `Description?: string`).
+Optional fields are inferred automatically: if a property is missing or null on some records, the generated type uses `?` (for example, `Description: string?`), including when `empty_value = "nil"`.
 
 To emit data only (no `export type`), set in `ntn-lua.toml`:
 
@@ -277,9 +288,11 @@ export_types = false
 ## Features
 
 - **`ntn-lua init`** — Generate `ntn-lua.toml` with default values in the project root
+- **Named targets** — Multiple `[targets.<key>]` database/output pairs; `ntn-lua <key>` or `ntn-lua` for all
+- **Skip prefix `[Skip]`** — Notion columns whose names start with `[Skip]` stay in Notion and are not written to Luau
 - **`ntn-lua` CLI** — Standalone binary compiled with Bun, distributed via Rokit (end users do not install Node or Bun)
 - **Full record fetch** — Notion API pagination
-- **Automatic `export type`** — Notion schema → Luau types; optional fields inferred from record coverage
+- **Automatic `export type`** — Notion schema → Luau types; optional fields inferred from null/missing values
 - **Type conversion** — Notion properties → Luau values
 - **Notion writes** — Find and update a `language = lua` code block, or append one (Luau in the UI is supported)
 - **`ntn-lua push`** — Create a new Notion database from a local `.luau` ModuleScript (see [Push to Notion](#push-to-notion))
@@ -302,10 +315,11 @@ export_types = false
 
 ### Priority
 
-- **Database ID:** `-d` / `--database-id` → positional argument → `ntn-lua.toml` `database_id`
-- **Output path:** `-o` / `--output` → `ntn-lua.toml` `output` (if unset, writes to a Notion code block)
-- **Page ID:** `-p` / `--page-id` → `ntn-lua.toml` `[source]` `code_block_parent_page_id` (flat `page_id` still accepted)
-- **Formatting / types:** `ntn-lua.toml` only (`format`, `export_types`; both default to `true`)
+- **Target:** positional `<key>` → all `[targets]` when omitted
+- **Database ID:** `-d` / `--database-id` → selected target → positional argument (legacy configs only) → `ntn-lua.toml` `database_id`
+- **Output path:** `-o` / `--output` → selected target / `ntn-lua.toml` `output` (if unset, writes to a Notion code block)
+- **Page ID:** `-p` / `--page-id` → selected target / `ntn-lua.toml` `[source]` `code_block_parent_page_id` (flat `page_id` still accepted)
+- **Formatting / types:** `[targets.<key>.emit]` overrides `[emit]` (`format`, `export_types`; both default to `true`)
 
 ### Write to a Notion code block (default)
 
@@ -317,7 +331,7 @@ ntn-lua <DATABASE_OR_DATA_SOURCE_ID>
 
 Target page resolution order:
 
-1. `-p` / `--page-id` or `ntn-lua.toml` `[source]` `code_block_parent_page_id` (when set; flat `page_id` still accepted)
+1. `-p` / `--page-id`, the selected target's `code_block_parent_page_id`, or `ntn-lua.toml` `[source]` `code_block_parent_page_id` (when set; flat `page_id` still accepted)
 2. `database_parent.page_id` on the data source
 3. Walk parents from `database_parent.block_id` via `blocks.retrieve`
 4. Error when unresolvable (for example, a database directly under the workspace)
@@ -332,6 +346,7 @@ If a database has multiple data sources, pass a `data_source_id` directly. The t
 
 ```bash
 ntn-lua
+ntn-lua weapons
 ntn-lua -d <DATABASE_ID> -o ./output
 ntn-lua -d <DATABASE_ID> -o ./output/Weapons.luau
 ```
@@ -345,20 +360,21 @@ ntn-lua -d <DATABASE_ID> -o ./output/Weapons.luau
 
 ```bash
 ntn-lua init
-ntn-lua [-d <id>] [<database-id>] [-p <page-id>] [-o <dir-or-file>]
+ntn-lua [<target-key>] [-d <id>] [-p <page-id>] [-o <dir-or-file>]
 ntn-lua push <file.luau> [-p <page-id>]
 ```
 
 | Command / option | Description |
 | --- | --- |
 | `init` | Create `ntn-lua.toml` in the current directory |
-| `<database-id>` | Positional database or data source ID when `-d` is omitted (pull mode) |
-| `-d, --database-id` | Source `database_id` or `data_source_id` (overrides `ntn-lua.toml`; pull mode) |
+| `<target-key>` | Named `[targets.<key>]` entry (pull mode). With `[targets]`, this is a key, not a database id |
+| `<database-id>` | Positional database or data source ID when `-d` is omitted **and** the config has no `[targets]` (legacy pull mode) |
+| `-d, --database-id` | Source `database_id` or `data_source_id` (overrides the selected target or `ntn-lua.toml`; pull mode) |
 | `-p, --page-id` | Notion page ID for the code block (pull) or parent page for a new database (`push`; overrides `ntn-lua.toml`) |
-| `-o, --output` | Output directory or `.lua` / `.luau` file path (overrides `ntn-lua.toml`; pull mode) |
+| `-o, --output` | Output directory or `.lua` / `.luau` file path (overrides the selected target or `ntn-lua.toml`; pull mode) |
 | `-h, --help` | Show help |
 
-TOML-only settings (`format`, `export_types`) are documented in [Configuration](#configuration-ntn-luatoml).
+TOML-only settings (`format`, `export_types`, and other `[emit]` keys, including per-target `[targets.<key>.emit]`) are documented in [Configuration](#configuration-ntn-luatoml).
 
 ### Push to Notion
 
@@ -370,7 +386,7 @@ ntn-lua push ./output/Weapons.luau -p <PAGE_ID>
 ntn-lua push ./output/Weapons.luau
 ```
 
-- **Parent page:** `-p` / `--page-id` or `ntn-lua.toml` `[source]` `code_block_parent_page_id` (required — error if neither is set; flat `page_id` still accepted)
+- **Parent page:** `-p` / `--page-id` or `ntn-lua.toml` `[source]` `code_block_parent_page_id` (required — error if neither is set; flat `page_id` still accepted). `[targets.<key>]` `code_block_parent_page_id` is for pull code-block output only; `push` does not read it.
 - **Database title:** the module variable name from the file (for example, `Weapons` from `local Weapons = { ... }`)
 - **Record keys:** each top-level table key becomes the Notion **Name** (Title) column
 - **Integration capabilities:** **Insert content** (and **Read content**) on the parent page
@@ -407,6 +423,8 @@ Pushed N record(s) to new database <databaseId> (data_source <dataSourceId>) fro
 | Empty | Omitted from output (stored as `nil`) | — |
 
 Unsupported types (Rollup, Files, People, and others) are skipped. Relation columns are embedded automatically as Luau dictionaries.
+
+**Skip prefix:** name a column `[Skip] …` (for example `[Skip] Design notes`) to keep it in Notion for documentation without emitting it to Luau. The Title (record key) column is never skipped this way. The same prefix applies to related databases when embedding relations.
 
 **Typed Rich Text:** name a Rich Text column `BaseName [TypeName]` (for example `Spawn [CFrame]` with value `10, 5, -20 | 0, 90, 0`) to emit Roblox constructors in generated Luau. See [docs/typed-rich-text.md](./docs/typed-rich-text.md).
 
@@ -448,7 +466,7 @@ Effects = {
 -- type: Effects: { [string]: { Power: number?, Duration: number? } }?
 ```
 
-Generated `export type` fields use `?` when a property is missing on some records but present on others. Property names and record keys that are not valid Luau identifiers use bracket notation (for example, `["my-item"]`). Numeric record titles use numeric indexes in values (for example, `[1] = { ... }`) and `[number]: Entry` in module types; with `omit_array_index = true` and dense `1..N` titles, the module becomes a keyless array instead.
+Generated `export type` fields use `?` when a property is missing or null on some records (including `empty_value = "nil"`). Property names and record keys that are not valid Luau identifiers use bracket notation (for example, `["my-item"]`). Numeric record titles use numeric indexes in values (for example, `[1] = { ... }`) and `[number]: Entry` in module types; with `omit_array_index = true` and dense `1..N` titles, the module becomes a keyless array instead.
 
 ---
 
@@ -495,7 +513,7 @@ return Weapons
 - [Rokit](https://github.com/rojo-rbx/rokit)
 - [StyLua](https://github.com/JohnnyMorganz/StyLua) (`ntn-lua` spawns `stylua`; install both via Rokit)
 - `NOTION_API_TOKEN` (in `.env`)
-- `ntn-lua.toml` in the project root (recommended; run `ntn-lua init` to create it) — omit if you always pass `-d` / `-o`
+- **`ntn-lua.toml` in the project root (recommended; run `ntn-lua init` to create it) — omit if you always pass `-d` / `-o`
 - Target pages and databases shared with your Notion integration (see [Notion setup](#notion-setup))
 
 ---

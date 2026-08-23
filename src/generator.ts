@@ -352,15 +352,25 @@ function resolveScalarRelationValueType(
   values: Iterable<LuauValue | null | undefined>,
   emptyValue: EmptyValueMode,
 ): string {
-  if (!valueNotionType) {
-    return fallbackValueType;
+  const materialized = [...values];
+  const baseType = valueNotionType
+    ? exportablePropertyToLuauTypeFromNotionType(
+        valueNotionType,
+        materialized,
+        emptyValue,
+      )
+    : fallbackValueType;
+  const hasNull = materialized.some((value) => value === null);
+  const nullBecomesEmptyString =
+    emptyValue === "empty_string" &&
+    !!valueNotionType &&
+    isStringLikeNotionType(valueNotionType);
+
+  if (hasNull && !nullBecomesEmptyString) {
+    return `${baseType}?`;
   }
 
-  return exportablePropertyToLuauTypeFromNotionType(
-    valueNotionType,
-    values,
-    emptyValue,
-  );
+  return baseType;
 }
 
 function entryPropertyToLuauType(
@@ -510,6 +520,33 @@ function isPropertyPresentInRecord(
   return isPropertyValuePresent(value, emptyValue, notionType);
 }
 
+function isPropertyFilledForType(
+  record: LuauRecord,
+  propertyName: string,
+  emptyValue: EmptyValueMode,
+  notionType: string,
+): boolean {
+  if (!(propertyName in record.properties)) {
+    return false;
+  }
+
+  const value = record.properties[propertyName];
+
+  if (value === null) {
+    return emptyValue === "empty_string" && isStringLikeNotionType(notionType);
+  }
+
+  if (Array.isArray(value)) {
+    return value.length > 0;
+  }
+
+  if (isLuauTable(value)) {
+    return Object.keys(value).length > 0;
+  }
+
+  return true;
+}
+
 function generateEntryType(
   entryTypeName: string,
   properties: ExportableProperty[],
@@ -524,11 +561,14 @@ function generateEntryType(
     .map((propertyName) => {
       const property = findExportableProperty(properties, propertyName);
       const notionType = property?.notionType ?? "string";
+      const filledCount = records.filter((record) =>
+        isPropertyFilledForType(record, propertyName, emptyValue, notionType),
+      ).length;
       const presentCount = records.filter((record) =>
         isPropertyPresentInRecord(record, propertyName, emptyValue, notionType),
       ).length;
 
-      if (presentCount === 0) {
+      if (filledCount === 0 && presentCount === 0) {
         return null;
       }
 
@@ -537,7 +577,7 @@ function generateEntryType(
         records,
         emptyValue,
       );
-      const optionalSuffix = presentCount < records.length ? "?" : "";
+      const optionalSuffix = filledCount < records.length ? "?" : "";
 
       return `${formatTypePropertyKey(propertyName)}: ${luauType}${optionalSuffix},`;
     })

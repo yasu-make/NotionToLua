@@ -114,7 +114,7 @@ Type: { [string]: { Power: number?, Duration: number? } }
 
 ## Configuration
 
-Only **global** settings in `ntn-lua.toml` — no per-column or per-database overrides.
+`empty_value` and `empty_relation` are set in `ntn-lua.toml` `[emit]`, or overridden per database in `[targets.<key>.emit]`. Relation columns are still embedded automatically — prefix a column `[Skip]` (for example `[Skip] Notes`) to keep it in Notion without emitting it.
 
 ```toml
 # Skip null values (default)

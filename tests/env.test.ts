@@ -9,6 +9,7 @@ import {
 } from "../src/config.js";
 
 const sampleConfig: ResolvedUserConfig = {
+  namedTargets: {},
   databaseId: "from-config-db",
   pageId: "from-config-page",
   output: "./from-config",
