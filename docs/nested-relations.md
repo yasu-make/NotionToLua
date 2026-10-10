@@ -96,6 +96,57 @@ Items = {
 - **Duplicate numeric titles** in the same relation are errors.
 - **Push** renumbers related titles to `"1"`, `"2"`, …, `"N"` in array order (L2 semantics).
 
+## Multi-level nesting (`relation_depth`)
+
+By default only the first level is embedded: Relation columns on the related database are ignored. Set `relation_depth` to embed Relation columns of related databases too.
+
+### Elements DB
+
+| Title | Damage (number) |
+|---|---|
+| Heat | 3 |
+
+### Effects DB
+
+| Title | Power (number) | Element (Relation → Elements) |
+|---|---|---|
+| Fire | 10 | Heat |
+
+### `ntn-lua.toml`
+
+```toml
+[emit]
+relation_depth = 2
+```
+
+### Generated Luau
+
+```lua
+export type WeaponsEntry = {
+    Effects: { [string]: {
+        Element: { [string]: number }?,
+        Power: number?,
+    } }?,
+}
+
+local Weapons: Weapons = {
+    Sword = {
+        Effects = {
+            Fire = {
+                Element = {
+                    Heat = 3,
+                },
+                Power = 10,
+            },
+        },
+    },
+}
+```
+
+Each level follows the same rules as the first: dictionary or `[Array]`, scalar collapse when the related database has one exportable column, and `[Skip]` columns are ignored. Nested Relation columns count as exportable columns.
+
+**Two-way relations.** A two-way Relation adds a back-reference column to the related database (for example `Effects.Weapons`). With `relation_depth` of 2 or more that column would embed the parent record again, so it is reported as a circular relation. Prefix the back-reference column with `[Skip]` (or turn off "Show on" for it in Notion).
+
 ## Scalar vs nested dictionaries
 
 When the related database has **exactly one exportable column** (excluding Title), values are collapsed into a scalar dictionary:
@@ -114,7 +165,7 @@ Type: { [string]: { Power: number?, Duration: number? } }
 
 ## Configuration
 
-`empty_value` and `empty_relation` are set in `ntn-lua.toml` `[emit]`, or overridden per database in `[targets.<key>.emit]`. Relation columns are still embedded automatically — prefix a column `[Skip]` (for example `[Skip] Notes`) to keep it in Notion without emitting it.
+`empty_value`, `empty_relation`, and `relation_depth` are set in `ntn-lua.toml` `[emit]`, or overridden per database in `[targets.<key>.emit]`. Relation columns are still embedded automatically — prefix a column `[Skip]` (for example `[Skip] Notes`) to keep it in Notion without emitting it.
 
 ```toml
 # Skip null values (default)
@@ -128,6 +179,7 @@ empty_relation = "omit"
 |---|---|---|---|
 | `empty_value` | `omit`, `nil`, `empty_string` | `omit` | How to emit null / missing property values |
 | `empty_relation` | `omit`, `empty_table` | `omit` | How to emit Relation columns with no linked records |
+| `relation_depth` | positive integer | `1` | How many levels of Relation columns to embed |
 
 ### `empty_value`
 
@@ -155,8 +207,10 @@ empty_relation = "omit"
 
 - Related record **Title values must be unique** within each Relation column.
 - **Circular relations** are detected and reported as errors.
-- Relation embedding depth is limited to **1 level** (Weapons → Effects; no further nesting by default).
-- There is **no opt-out** for Relation embedding in v0.3.0 — all Relation columns are expanded. Reference-only mode is planned for a future release.
+- Relation embedding goes **1 level** deep by default (Weapons → Effects). Raise `relation_depth` for deeper nesting.
+- Every Relation column within the depth is expanded. Prefix a column with `[Skip]` to leave it out.
+- Related databases must be shared with your integration, including ones no record currently links to.
+- `ntn-lua push` does not create nested related databases.
 - Unsupported property types on the related database are still skipped.
 
 See also [README breaking changes](../README.md#configuration-ntn-luatoml) when upgrading from v0.1.x.
@@ -166,6 +220,6 @@ See also [README breaking changes](../README.md#configuration-ntn-luatoml) when 
 | Version | Status |
 |---|---|
 | v0.3.0 | Relation auto-embed, scalar/nested collapse, global empty handling |
-| v0.4 | Configurable embed depth, reference-only mode |
+| v0.8 | Configurable embed depth (`relation_depth`) |
 | v0.5 | Typed Rich Text (`BaseName [TypeName]`) for Roblox values — see [typed-rich-text.md](./typed-rich-text.md) |
 | Future | JSON-in-Rich-Text escape hatch, multi-module output |

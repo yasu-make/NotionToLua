@@ -12,6 +12,7 @@ export type EmitOverrides = {
   emptyValue?: EmptyValueMode;
   emptyRelation?: EmptyRelationMode;
   omitArrayIndex?: boolean;
+  relationDepth?: number;
 };
 
 export type UserConfigTarget = {
@@ -23,6 +24,7 @@ export type UserConfigTarget = {
   empty_value?: EmptyValueMode;
   empty_relation?: EmptyRelationMode;
   omit_array_index?: boolean;
+  relation_depth?: number;
 };
 
 export type UserConfigFile = {
@@ -35,6 +37,7 @@ export type UserConfigFile = {
   empty_value?: EmptyValueMode;
   empty_relation?: EmptyRelationMode;
   omit_array_index?: boolean;
+  relation_depth?: number;
   targets?: Record<string, UserConfigTarget>;
 };
 
@@ -54,6 +57,7 @@ export type ResolvedUserConfig = {
   emptyValue: EmptyValueMode;
   emptyRelation: EmptyRelationMode;
   omitArrayIndex: boolean;
+  relationDepth: number;
 };
 
 export type PullJob = {
@@ -66,6 +70,7 @@ export type PullJob = {
   emptyValue: EmptyValueMode;
   emptyRelation: EmptyRelationMode;
   omitArrayIndex: boolean;
+  relationDepth: number;
 };
 
 const SECTION_NAMES = new Set(["source", "paths", "emit", "targets"]);
@@ -82,6 +87,7 @@ const FLAT_ALLOWED_KEYS = new Set([
   "empty_value",
   "empty_relation",
   "omit_array_index",
+  "relation_depth",
 ]);
 
 const SOURCE_KEYS = new Set(["database_id", "code_block_parent_page_id"]);
@@ -92,6 +98,7 @@ const EMIT_KEYS = new Set([
   "empty_value",
   "empty_relation",
   "omit_array_index",
+  "relation_depth",
 ]);
 const TARGET_ENTRY_KEYS = new Set([
   "database_id",
@@ -107,6 +114,7 @@ const DEFAULT_CONFIG: ResolvedUserConfig = {
   emptyValue: "omit",
   emptyRelation: "omit",
   omitArrayIndex: false,
+  relationDepth: 1,
 };
 
 function assertNonEmptyString(value: unknown, key: string): string {
@@ -154,6 +162,16 @@ function assertEmptyRelationMode(
   if (value !== "omit" && value !== "empty_table") {
     throw new NotionToLuaError(
       `Invalid value for "${key}" in ntn-lua.toml. Expected "omit" or "empty_table".`,
+    );
+  }
+
+  return value;
+}
+
+function assertPositiveInteger(value: unknown, key: string): number {
+  if (typeof value !== "number" || !Number.isInteger(value) || value < 1) {
+    throw new NotionToLuaError(
+      `Invalid value for "${key}" in ntn-lua.toml. Expected a positive integer.`,
     );
   }
 
@@ -218,6 +236,7 @@ function applyEmitFields(
     empty_value?: EmptyValueMode;
     empty_relation?: EmptyRelationMode;
     omit_array_index?: boolean;
+    relation_depth?: number;
   },
   record: Record<string, unknown>,
 ): void {
@@ -244,6 +263,13 @@ function applyEmitFields(
     config.omit_array_index = assertBoolean(
       record.omit_array_index,
       "omit_array_index",
+    );
+  }
+
+  if ("relation_depth" in record) {
+    config.relation_depth = assertPositiveInteger(
+      record.relation_depth,
+      "relation_depth",
     );
   }
 }
@@ -431,6 +457,10 @@ function copyEmitOverrides(target: NamedTarget, source: UserConfigTarget): void 
   if (source.omit_array_index !== undefined) {
     target.omitArrayIndex = source.omit_array_index;
   }
+
+  if (source.relation_depth !== undefined) {
+    target.relationDepth = source.relation_depth;
+  }
 }
 
 function resolveNamedTargets(
@@ -463,6 +493,7 @@ function resolveConfig(config: UserConfigFile): ResolvedUserConfig {
     emptyValue: config.empty_value ?? "omit",
     emptyRelation: config.empty_relation ?? "omit",
     omitArrayIndex: config.omit_array_index ?? false,
+    relationDepth: config.relation_depth ?? 1,
   };
 
   assignOptionalString(resolved, "databaseId", config.database_id);
@@ -526,6 +557,7 @@ function emitFromConfig(config: ResolvedUserConfig): {
   emptyValue: EmptyValueMode;
   emptyRelation: EmptyRelationMode;
   omitArrayIndex: boolean;
+  relationDepth: number;
 } {
   return {
     format: config.format,
@@ -533,6 +565,7 @@ function emitFromConfig(config: ResolvedUserConfig): {
     emptyValue: config.emptyValue,
     emptyRelation: config.emptyRelation,
     omitArrayIndex: config.omitArrayIndex,
+    relationDepth: config.relationDepth,
   };
 }
 
@@ -545,6 +578,7 @@ function mergeEmit(
   emptyValue: EmptyValueMode;
   emptyRelation: EmptyRelationMode;
   omitArrayIndex: boolean;
+  relationDepth: number;
 } {
   const base = emitFromConfig(config);
   return {
@@ -553,6 +587,7 @@ function mergeEmit(
     emptyValue: override?.emptyValue ?? base.emptyValue,
     emptyRelation: override?.emptyRelation ?? base.emptyRelation,
     omitArrayIndex: override?.omitArrayIndex ?? base.omitArrayIndex,
+    relationDepth: override?.relationDepth ?? base.relationDepth,
   };
 }
 
@@ -567,6 +602,7 @@ export function configForPullJob(
     emptyValue: job.emptyValue,
     emptyRelation: job.emptyRelation,
     omitArrayIndex: job.omitArrayIndex,
+    relationDepth: job.relationDepth,
   };
 }
 

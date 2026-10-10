@@ -75,6 +75,7 @@ Configuration (ntn-lua.toml):
     empty_value         How to emit null values: omit, nil, or empty_string (default: omit)
     empty_relation      How to emit empty relations: omit or empty_table (default: omit)
     omit_array_index    Omit numeric array indexes when keys are 1..N (default: false)
+    relation_depth      How many levels of nested Relation columns to embed (default: 1)
 
   Legacy single-target keys still work: [source] database_id, [paths] output,
   and flat root keys. Do not mix them with [targets].

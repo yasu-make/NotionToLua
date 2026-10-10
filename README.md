@@ -134,11 +134,12 @@ Settings are grouped into `[targets.<key>]` (one database + output pair per key)
 | `[targets.<key>]` `database_id` | string | — | Database or `data_source_id` for this target |
 | `[targets.<key>]` `output` | string | — | Output directory or `.lua` / `.luau` file path |
 | `[targets.<key>]` `code_block_parent_page_id` | string | — | Optional Notion page ID for code block output |
-| `[targets.<key>.emit]` | — | inherit `[emit]` | Per-target overrides of `format`, `export_types`, `empty_value`, `empty_relation`, `omit_array_index` |
+| `[targets.<key>.emit]` | — | inherit `[emit]` | Per-target overrides of `format`, `export_types`, `empty_value`, `empty_relation`, `omit_array_index`, `relation_depth` |
 | `[emit]` `format` | boolean | `true` | Run StyLua formatting after generation |
 | `[emit]` `export_types` | boolean | `true` | Emit Luau `export type` definitions |
 | `[emit]` `empty_value` | string | `"omit"` | How to emit null values: `omit`, `nil`, or `empty_string` |
 | `[emit]` `empty_relation` | string | `"omit"` | How to emit empty relations: `omit` or `empty_table` |
+| `[emit]` `relation_depth` | integer | `1` | How many levels of Relation columns to embed. `2` also embeds Relation columns of related databases. See [Nested relations](./docs/nested-relations.md#multi-level-nesting-relation_depth) |
 | `[emit]` `omit_array_index` | boolean | `false` | When all record Titles are numeric and form a dense `1..N` sequence, emit a keyless Luau array and `export type Module = { Entry }` instead of `[1]..[N]` keys |
 
 Legacy `[source]` `database_id` / `code_block_parent_page_id` and `[paths]` `output` remain readable. Flat `page_id` at the root is still accepted as a legacy alias for `code_block_parent_page_id`; do not set both. Target keys `init` and `push` are reserved.
@@ -178,6 +179,7 @@ export_types = true
 empty_value = "omit"         # omit | nil | empty_string
 empty_relation = "omit"      # omit | empty_table
 omit_array_index = false
+relation_depth = 1           # levels of nested Relation columns to embed
 
 [targets.weapons]
 database_id = "your-weapons-database-id"

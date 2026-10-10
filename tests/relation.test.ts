@@ -238,6 +238,7 @@ describe("resolveEmbeddedRelationsForRecords", () => {
         exportTypes: true,
         emptyValue: "omit",
         emptyRelation: "omit",
+        relationDepth: 1,
       },
       [swordPage],
     );
@@ -350,6 +351,7 @@ describe("resolveEmbeddedRelationsForRecords", () => {
         exportTypes: true,
         emptyValue: "omit",
         emptyRelation: "omit",
+        relationDepth: 1,
       },
       [swordPage],
     );
@@ -400,12 +402,17 @@ describe("resolveEmbeddedRelationsForRecords", () => {
     ];
 
     const context = createRelationResolutionContext(
-      { pages: { retrieve: async () => swordPage } } as never,
+      {
+        databases: { retrieve: async () => ({ data_sources: [{ id: "effects-ds" }] }) },
+        dataSources: { retrieve: async () => createDataSource("effects-ds", {}) },
+        pages: { retrieve: async () => swordPage },
+      } as never,
       {
         format: true,
         exportTypes: true,
         emptyValue: "omit",
         emptyRelation: "omit",
+        relationDepth: 1,
       },
       [swordPage],
     );
@@ -452,12 +459,17 @@ describe("resolveEmbeddedRelationsForRecords", () => {
     ];
 
     const context = createRelationResolutionContext(
-      { pages: { retrieve: async () => swordPage } } as never,
+      {
+        databases: { retrieve: async () => ({ data_sources: [{ id: "effects-ds" }] }) },
+        dataSources: { retrieve: async () => createDataSource("effects-ds", {}) },
+        pages: { retrieve: async () => swordPage },
+      } as never,
       {
         format: true,
         exportTypes: true,
         emptyValue: "omit",
         emptyRelation: "empty_table",
+        relationDepth: 1,
       },
       [swordPage],
     );
@@ -530,6 +542,7 @@ describe("resolveEmbeddedRelationsForRecords", () => {
         exportTypes: true,
         emptyValue: "omit",
         emptyRelation: "omit",
+        relationDepth: 1,
       },
       [page],
     );
@@ -640,5 +653,265 @@ describe("generateModuleScript relation types", () => {
 
     assert.match(output, /Notes = "",/);
     assert.doesNotMatch(output, /Power =/);
+  });
+});
+
+function numberProperty(name: string) {
+  return {
+    id: name,
+    name,
+    type: "number" as const,
+    number: { format: "number" as const },
+    description: null,
+  };
+}
+
+function relationProperty(name: string, dataSourceId: string) {
+  return {
+    id: name,
+    name,
+    type: "relation" as const,
+    relation: {
+      database_id: `${dataSourceId}-db`,
+      data_source_id: dataSourceId,
+      type: "single_property" as const,
+      single_property: {},
+    },
+    description: null,
+  };
+}
+
+function relationValue(name: string, pageIds: string[]) {
+  return {
+    id: name,
+    type: "relation" as const,
+    relation: pageIds.map((id) => ({ id })),
+    has_more: false,
+  };
+}
+
+function numberValue(name: string, value: number) {
+  return { id: name, type: "number" as const, number: value };
+}
+
+function createNotionMock(
+  dataSources: DataSourceObjectResponse[],
+  pages: PageObjectResponse[],
+) {
+  return {
+    databases: {
+      retrieve: async ({ database_id }: { database_id: string }) => ({
+        data_sources: [{ id: database_id }],
+      }),
+    },
+    dataSources: {
+      retrieve: async ({ data_source_id }: { data_source_id: string }) => {
+        const dataSource = dataSources.find((item) => item.id === data_source_id);
+        assert.ok(dataSource, `unexpected data source ${data_source_id}`);
+        return dataSource;
+      },
+    },
+    pages: {
+      retrieve: async ({ page_id }: { page_id: string }) => {
+        const page = pages.find((item) => item.id === page_id);
+        assert.ok(page, `unexpected page ${page_id}`);
+        return page;
+      },
+    },
+  } as never;
+}
+
+async function resolveWeapons(
+  weaponsDataSource: DataSourceObjectResponse,
+  weaponPages: PageObjectResponse[],
+  relatedDataSources: DataSourceObjectResponse[],
+  relatedPages: PageObjectResponse[],
+  relationDepth: number,
+) {
+  const records: LuauRecord[] = weaponPages.map((page) => ({
+    key: page.properties.Name?.type === "title"
+      ? page.properties.Name.title[0]!.plain_text
+      : "",
+    keyFormat: "identifier",
+    properties: {},
+  }));
+  const context = createRelationResolutionContext(
+    createNotionMock(relatedDataSources, [...weaponPages, ...relatedPages]),
+    {
+      namedTargets: {},
+      format: true,
+      exportTypes: true,
+      emptyValue: "omit",
+      emptyRelation: "omit",
+      omitArrayIndex: false,
+      relationDepth,
+    },
+    weaponPages,
+  );
+  const properties = await resolveEmbeddedRelationsForRecords(
+    context,
+    records,
+    weaponPages,
+    weaponsDataSource,
+  );
+
+  return { records, properties };
+}
+
+describe("nested relations (relation_depth)", () => {
+  // Weapons -> Effects (Power, Element) -> Elements (Damage)
+  const elementsDataSource = createDataSource("elements-ds", {
+    Damage: numberProperty("Damage"),
+  });
+  const effectsDataSource = createDataSource("effects-ds", {
+    Power: numberProperty("Power"),
+    Element: relationProperty("Element", "elements-ds"),
+  });
+  const weaponsDataSource = createDataSource("weapons-ds", {
+    Effects: relationProperty("Effects", "effects-ds"),
+  });
+  const heatPage = createPage("heat-page", "Heat", {
+    Damage: numberValue("Damage", 3),
+  });
+  const firePage = createPage("fire-page", "Fire", {
+    Power: numberValue("Power", 10),
+    Element: relationValue("Element", ["heat-page"]),
+  });
+  const swordPage = createPage("sword-page", "Sword", {
+    Effects: relationValue("Effects", ["fire-page"]),
+  });
+
+  it("ignores relation columns of related databases at the default depth", async () => {
+    const { records } = await resolveWeapons(
+      weaponsDataSource,
+      [swordPage],
+      [effectsDataSource, elementsDataSource],
+      [firePage, heatPage],
+      1,
+    );
+
+    assert.deepEqual(records[0]?.properties.Effects, { Fire: 10 });
+  });
+
+  it("embeds two levels of relations when relation_depth is 2", async () => {
+    const { records, properties } = await resolveWeapons(
+      weaponsDataSource,
+      [swordPage],
+      [effectsDataSource, elementsDataSource],
+      [firePage, heatPage],
+      2,
+    );
+
+    assert.deepEqual(records[0]?.properties.Effects, {
+      Fire: { Power: 10, Element: { Heat: 3 } },
+    });
+
+    const output = generateModuleScript(records, {
+      moduleName: "Weapons",
+      properties,
+      exportTypes: true,
+    });
+
+    assert.match(output, /Element: \{ \[string\]: number \}\?,/);
+    assert.match(output, /Power: number\?,/);
+    assert.match(output, /Element = \{\s*Heat = 3,\s*\}/);
+  });
+
+  it("embeds three levels through array relations", async () => {
+    const stagesDataSource = createDataSource("stages-ds", {
+      Scale: numberProperty("Scale"),
+    });
+    const tiersDataSource = createDataSource("tiers-ds", {
+      "Stages [Array]": relationProperty("Stages [Array]", "stages-ds"),
+    });
+    const itemsDataSource = createDataSource("items-ds", {
+      Tiers: relationProperty("Tiers", "tiers-ds"),
+    });
+    const stageOne = createPage("stage-1", "1", {
+      Scale: numberValue("Scale", 1.5),
+    });
+    const stageTwo = createPage("stage-2", "2", {
+      Scale: numberValue("Scale", 2),
+    });
+    const goldTier = createPage("gold-tier", "Gold", {
+      "Stages [Array]": relationValue("Stages [Array]", ["stage-2", "stage-1"]),
+    });
+    const crownPage = createPage("crown-page", "Crown", {
+      Tiers: relationValue("Tiers", ["gold-tier"]),
+    });
+
+    const { records, properties } = await resolveWeapons(
+      itemsDataSource,
+      [crownPage],
+      [tiersDataSource, stagesDataSource],
+      [goldTier, stageOne, stageTwo],
+      3,
+    );
+
+    assert.deepEqual(records[0]?.properties.Tiers, { Gold: [1.5, 2] });
+
+    const output = generateModuleScript(records, {
+      moduleName: "Items",
+      properties,
+      exportTypes: true,
+    });
+
+    assert.match(output, /Tiers: \{ \[string\]: \{ number \} \}/);
+  });
+
+  it("reports back-references as circular relations", async () => {
+    const backEffects = createDataSource("effects-ds", {
+      Power: numberProperty("Power"),
+      Weapons: relationProperty("Weapons", "weapons-ds"),
+    });
+    const fire = createPage("fire-page", "Fire", {
+      Power: numberValue("Power", 10),
+      Weapons: relationValue("Weapons", ["sword-page"]),
+    });
+
+    await assert.rejects(
+      () =>
+        resolveWeapons(
+          weaponsDataSource,
+          [swordPage],
+          [backEffects, weaponsDataSource],
+          [fire],
+          2,
+        ),
+      /Circular relation detected while embedding "Weapons"/,
+    );
+  });
+
+  it("does not embed [Skip] relation columns at any level", async () => {
+    const skippedEffects = createDataSource("effects-ds", {
+      Power: numberProperty("Power"),
+      "[Skip] Weapons": relationProperty("[Skip] Weapons", "weapons-ds"),
+    });
+    const fire = createPage("fire-page", "Fire", {
+      Power: numberValue("Power", 10),
+      "[Skip] Weapons": relationValue("[Skip] Weapons", ["sword-page"]),
+    });
+    const weapons = createDataSource("weapons-ds", {
+      Effects: relationProperty("Effects", "effects-ds"),
+      "[Skip] Notes": relationProperty("[Skip] Notes", "effects-ds"),
+    });
+    const sword = createPage("sword-page", "Sword", {
+      Effects: relationValue("Effects", ["fire-page"]),
+      "[Skip] Notes": relationValue("[Skip] Notes", ["fire-page"]),
+    });
+
+    const { records, properties } = await resolveWeapons(
+      weapons,
+      [sword],
+      [skippedEffects, weapons],
+      [fire],
+      2,
+    );
+
+    assert.deepEqual(records[0]?.properties, { Effects: { Fire: 10 } });
+    assert.deepEqual(
+      properties.map((property) => property.name),
+      ["Effects"],
+    );
   });
 });

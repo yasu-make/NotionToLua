@@ -14,6 +14,7 @@ export_types = true
 empty_value = "omit"         # omit | nil | empty_string
 empty_relation = "omit"      # omit | empty_table
 omit_array_index = false
+relation_depth = 1           # levels of nested Relation columns to embed
 
 [targets.example]
 database_id = "your-database-or-data-source-id"

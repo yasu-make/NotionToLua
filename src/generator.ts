@@ -18,9 +18,9 @@ import type {
   LuauRecord,
   LuauTable,
   LuauValue,
+  RelationPropertyMeta,
 } from "./types.js";
 import {
-  isLuauSequenceArray,
   isLuauTable,
   isPropertyValuePresent,
   isStringArray,
@@ -74,88 +74,97 @@ function notionTypeToLuauType(notionType: string): string {
   }
 }
 
-function relationPropertyToLuauType(
-  property: ExportableProperty,
-  records: LuauRecord[],
+function flattenRelationEntries(
+  meta: RelationPropertyMeta,
+  relationValues: Iterable<LuauValue | null | undefined>,
+): Array<LuauValue | null | undefined> {
+  const isArray = meta.kind === "scalar_array" || meta.kind === "nested_array";
+  const entries: Array<LuauValue | null | undefined> = [];
+
+  for (const relationValue of relationValues) {
+    if (relationValue === null || relationValue === undefined) {
+      continue;
+    }
+
+    if (isArray && Array.isArray(relationValue)) {
+      entries.push(...relationValue);
+    } else if (!isArray && isLuauTable(relationValue)) {
+      entries.push(...Object.values(relationValue));
+    } else {
+      entries.push(relationValue);
+    }
+  }
+
+  return entries;
+}
+
+function relationValuesToLuauType(
+  meta: RelationPropertyMeta | undefined,
+  relationValues: Iterable<LuauValue | null | undefined>,
   emptyValue: EmptyValueMode,
-): string | null {
-  if (!property.relationMeta) {
+): string {
+  if (!meta) {
     return "{ [string]: any }";
   }
 
-  if (property.relationMeta.kind === "scalar_dict") {
-    const valueType = resolveScalarRelationValueType(
-      property.relationMeta.valueNotionType,
-      property.relationMeta.valueType,
-      scalarRelationValues(property.name, records, "scalar_dict"),
-      emptyValue,
-    );
-    return `{ [string]: ${valueType} }`;
-  }
+  const entries = flattenRelationEntries(meta, relationValues);
 
-  if (property.relationMeta.kind === "scalar_array") {
-    const valueType = resolveScalarRelationValueType(
-      property.relationMeta.valueNotionType,
-      property.relationMeta.valueType,
-      scalarRelationValues(property.name, records, "scalar_array"),
-      emptyValue,
-    );
-    return `{ ${valueType} }`;
-  }
+  if (meta.kind === "scalar_dict" || meta.kind === "scalar_array") {
+    const valueType =
+      meta.valueProperty?.notionType === "relation"
+        ? relationValuesToLuauType(
+            meta.valueProperty.relationMeta,
+            entries,
+            emptyValue,
+          )
+        : resolveScalarRelationValueType(
+            meta.valueNotionType,
+            meta.valueType,
+            entries,
+            emptyValue,
+          );
 
-  if (property.relationMeta.kind === "nested_array") {
-    const fieldLines = sortKeys(
-      property.relationMeta.entryProperties.map(
-        (entryProperty) => entryProperty.name,
-      ),
-    )
-      .map((propertyName) => {
-        const entryProperty = property.relationMeta?.kind === "nested_array"
-          ? property.relationMeta.entryProperties.find(
-              (item) => item.name === propertyName,
-            )
-          : undefined;
-        const luauType = entryProperty
-          ? entryPropertyToLuauType(
-              entryProperty,
-              property.name,
-              records,
-              emptyValue,
-              "nested_array",
-            )
-          : notionTypeToLuauType("string");
-        const keyFormat = resolveLuauKeyFormat(propertyName);
-        return `${formatLuauKey(propertyName, keyFormat)}: ${luauType}?,`;
-      })
-      .join("\n");
-
-    return `{ {\n${indentBlock(fieldLines)}\n} }`;
+    return meta.kind === "scalar_dict"
+      ? `{ [string]: ${valueType} }`
+      : `{ ${valueType} }`;
   }
 
   const fieldLines = sortKeys(
-    property.relationMeta.entryProperties.map((entryProperty) => entryProperty.name),
+    meta.entryProperties.map((entryProperty) => entryProperty.name),
   )
     .map((propertyName) => {
-      const entryProperty = property.relationMeta?.kind === "nested_dict"
-        ? property.relationMeta.entryProperties.find(
-            (item) => item.name === propertyName,
-          )
-        : undefined;
-      const luauType = entryProperty
-        ? entryPropertyToLuauType(
-            entryProperty,
-            property.name,
-            records,
-            emptyValue,
-            "nested_dict",
-          )
-        : notionTypeToLuauType("string");
+      const entryProperty = meta.entryProperties.find(
+        (item) => item.name === propertyName,
+      )!;
+      const fieldValues = entries.map((entry) => {
+        if (entry === null || entry === undefined || !isLuauTable(entry)) {
+          return entry;
+        }
+
+        const entryTable: LuauTable = entry;
+        return entryTable[propertyName];
+      });
+      const luauType =
+        entryProperty.notionType === "relation"
+          ? relationValuesToLuauType(
+              entryProperty.relationMeta,
+              fieldValues,
+              emptyValue,
+            )
+          : exportablePropertyToLuauTypeFromNotionType(
+              entryProperty.notionType,
+              fieldValues,
+              emptyValue,
+            );
       const keyFormat = resolveLuauKeyFormat(propertyName);
       return `${formatLuauKey(propertyName, keyFormat)}: ${luauType}?,`;
     })
     .join("\n");
+  const entryType = `{\n${indentBlock(fieldLines)}\n}`;
 
-  return `{ [string]: {\n${indentBlock(fieldLines)}\n} }`;
+  return meta.kind === "nested_dict"
+    ? `{ [string]: ${entryType} }`
+    : `{ ${entryType} }`;
 }
 
 function* topLevelPropertyValues(
@@ -164,87 +173,6 @@ function* topLevelPropertyValues(
 ): Generator<LuauValue | null | undefined> {
   for (const record of records) {
     yield record.properties[propertyName];
-  }
-}
-
-function* nestedRelationEntryValues(
-  relationPropertyName: string,
-  entryPropertyName: string,
-  records: LuauRecord[],
-  kind: "nested_dict" | "nested_array",
-): Generator<LuauValue | null | undefined> {
-  for (const record of records) {
-    const relationValue = record.properties[relationPropertyName];
-    if (relationValue === null || relationValue === undefined) {
-      continue;
-    }
-
-    if (kind === "nested_dict") {
-      if (!isLuauTable(relationValue)) {
-        yield relationValue;
-        continue;
-      }
-
-      for (const nestedValue of Object.values(relationValue)) {
-        if (!isLuauTable(nestedValue)) {
-          yield nestedValue;
-          continue;
-        }
-
-        const nestedTable: LuauTable = nestedValue;
-        yield nestedTable[entryPropertyName];
-      }
-      continue;
-    }
-
-    if (!isLuauSequenceArray(relationValue)) {
-      yield relationValue;
-      continue;
-    }
-
-    for (const nestedValue of relationValue) {
-      if (!isLuauTable(nestedValue)) {
-        yield nestedValue;
-        continue;
-      }
-
-      const nestedTable: LuauTable = nestedValue;
-      yield nestedTable[entryPropertyName];
-    }
-  }
-}
-
-function* scalarRelationValues(
-  relationPropertyName: string,
-  records: LuauRecord[],
-  kind: "scalar_dict" | "scalar_array",
-): Generator<LuauValue | null | undefined> {
-  for (const record of records) {
-    const relationValue = record.properties[relationPropertyName];
-    if (relationValue === null || relationValue === undefined) {
-      continue;
-    }
-
-    if (kind === "scalar_dict") {
-      if (!isLuauTable(relationValue)) {
-        yield relationValue;
-        continue;
-      }
-
-      for (const scalarValue of Object.values(relationValue)) {
-        yield scalarValue;
-      }
-      continue;
-    }
-
-    if (!Array.isArray(relationValue)) {
-      yield relationValue;
-      continue;
-    }
-
-    for (const scalarValue of relationValue) {
-      yield scalarValue;
-    }
   }
 }
 
@@ -373,25 +301,6 @@ function resolveScalarRelationValueType(
   return baseType;
 }
 
-function entryPropertyToLuauType(
-  entryProperty: ExportableProperty,
-  relationPropertyName: string,
-  records: LuauRecord[],
-  emptyValue: EmptyValueMode,
-  kind: "nested_dict" | "nested_array",
-): string {
-  return exportablePropertyToLuauTypeFromNotionType(
-    entryProperty.notionType,
-    nestedRelationEntryValues(
-      relationPropertyName,
-      entryProperty.name,
-      records,
-      kind,
-    ),
-    emptyValue,
-  );
-}
-
 function exportablePropertyToLuauType(
   property: ExportableProperty,
   records: LuauRecord[],
@@ -425,7 +334,11 @@ function exportablePropertyToLuauType(
   }
 
   if (property.notionType === "relation") {
-    return relationPropertyToLuauType(property, records, emptyValue) ?? "{ [string]: any }";
+    return relationValuesToLuauType(
+      property.relationMeta,
+      topLevelPropertyValues(property.name, records),
+      emptyValue,
+    );
   }
 
   return notionTypeToLuauType(property.notionType);

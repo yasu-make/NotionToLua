@@ -35,6 +35,7 @@ describe("loadUserConfig", () => {
         emptyValue: "omit",
         emptyRelation: "omit",
         omitArrayIndex: false,
+        relationDepth: 1,
       });
     });
   });
@@ -49,6 +50,7 @@ export_types = false
 empty_value = "nil"
 empty_relation = "empty_table"
 omit_array_index = true
+relation_depth = 3
 `,
       (cwd) => {
         assert.deepEqual(loadUserConfig(cwd), {
@@ -61,6 +63,7 @@ omit_array_index = true
           emptyValue: "nil",
           emptyRelation: "empty_table",
           omitArrayIndex: true,
+          relationDepth: 3,
         });
       },
     );
@@ -81,6 +84,7 @@ export_types = false
 empty_value = "nil"
 empty_relation = "empty_table"
 omit_array_index = true
+relation_depth = 3
 `,
       (cwd) => {
         assert.deepEqual(loadUserConfig(cwd), {
@@ -93,6 +97,7 @@ omit_array_index = true
           emptyValue: "nil",
           emptyRelation: "empty_table",
           omitArrayIndex: true,
+          relationDepth: 3,
         });
       },
     );
@@ -256,6 +261,37 @@ relation = "embed"
     });
   });
 
+  it("throws when relation_depth is not a positive integer", () => {
+    for (const value of ["0", "1.5", '"2"']) {
+      withTempConfig(`relation_depth = ${value}\n`, (cwd) => {
+        assert.throws(
+          () => loadUserConfig(cwd),
+          /Invalid value for "relation_depth"/,
+        );
+      });
+    }
+  });
+
+  it("reads per-target relation_depth overrides", () => {
+    withTempConfig(
+      `[emit]
+relation_depth = 2
+
+[targets.weapons]
+database_id = "db-weapons"
+output = "src/Weapons.luau"
+
+[targets.weapons.emit]
+relation_depth = 4
+`,
+      (cwd) => {
+        const config = loadUserConfig(cwd);
+        assert.equal(config.relationDepth, 2);
+        assert.equal(config.namedTargets.weapons?.relationDepth, 4);
+      },
+    );
+  });
+
   it("throws when omit_array_index has an invalid type", () => {
     withTempConfig('omit_array_index = "yes"\n', (cwd) => {
       assert.throws(
@@ -368,6 +404,7 @@ code_block_parent_page_id = "page-items"
           emptyValue: "omit",
           emptyRelation: "omit",
           omitArrayIndex: false,
+          relationDepth: 1,
         });
       },
     );
@@ -509,6 +546,7 @@ const emitConfig: ResolvedUserConfig = {
   emptyValue: "omit",
   emptyRelation: "omit",
   omitArrayIndex: false,
+  relationDepth: 1,
 };
 
 const defaultJobEmit = {
@@ -517,6 +555,7 @@ const defaultJobEmit = {
   emptyValue: "omit" as const,
   emptyRelation: "omit" as const,
   omitArrayIndex: false,
+  relationDepth: 1,
 };
 
 describe("resolvePullJobs", () => {
@@ -677,6 +716,7 @@ describe("resolvePullJobs", () => {
         emptyValue: "nil",
         emptyRelation: "omit",
         omitArrayIndex: false,
+        relationDepth: 1,
       },
     ]);
   });

@@ -46,6 +46,7 @@ export async function generateLuauCode(
     emptyValue: "omit",
     emptyRelation: "omit",
     omitArrayIndex: false,
+    relationDepth: 1,
   };
   const dataSource =
     options.dataSource ?? (await resolveDataSource(notion, databaseId));
