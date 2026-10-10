@@ -95,6 +95,7 @@ export type RelationPropertyMeta =
       kind: "scalar_dict";
       valueType: string;
       valueNotionType?: string;
+      valueProperty?: ExportableProperty;
     }
   | {
       kind: "nested_dict";
@@ -104,6 +105,7 @@ export type RelationPropertyMeta =
       kind: "scalar_array";
       valueType: string;
       valueNotionType?: string;
+      valueProperty?: ExportableProperty;
     }
   | {
       kind: "nested_array";
@@ -129,11 +131,14 @@ export const SUPPORTED_PROPERTY_TYPES = new Set([
   "status",
 ]);
 
-/** Notion columns whose names start with this prefix are not synced to Luau. */
+/** Default prefix for Notion columns that are not synced to Luau (`skip_prefix`). */
 export const SKIP_PROPERTY_PREFIX = "[Skip]";
 
-export function isSkippedPropertyName(propertyName: string): boolean {
-  return propertyName.startsWith(SKIP_PROPERTY_PREFIX);
+export function isSkippedPropertyName(
+  propertyName: string,
+  skipPrefix = SKIP_PROPERTY_PREFIX,
+): boolean {
+  return propertyName.startsWith(skipPrefix);
 }
 
 const STRING_LIKE_NOTION_TYPES = new Set([

@@ -449,6 +449,14 @@ describe("pagesToLuauRecords", () => {
     assert.deepEqual(records[0]?.properties, {
       Count: 3,
     });
+
+    const customPrefixRecords = pagesToLuauRecords(pages, dataSource, {
+      skipPrefix: "Count",
+    });
+
+    assert.deepEqual(customPrefixRecords[0]?.properties, {
+      "[Skip] Notes": "design only",
+    });
   });
 
   it("throws when title values are duplicated", () => {

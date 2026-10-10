@@ -14,6 +14,7 @@ import {
   createRelationResolutionContext,
   resolveEmbeddedRelationsForRecords,
 } from "./relation.js";
+import { SKIP_PROPERTY_PREFIX } from "./types.js";
 
 export type GenerateLuauNotionClient = Pick<
   Client,
@@ -46,6 +47,8 @@ export async function generateLuauCode(
     emptyValue: "omit",
     emptyRelation: "omit",
     omitArrayIndex: false,
+    relationDepth: 1,
+    skipPrefix: SKIP_PROPERTY_PREFIX,
   };
   const dataSource =
     options.dataSource ?? (await resolveDataSource(notion, databaseId));
@@ -54,6 +57,7 @@ export async function generateLuauCode(
   const pages = await fetchAllDatabaseRecords(notion, dataSource.id);
   const records = pagesToLuauRecords(pages, dataSource, {
     onTypedFallback: options.onTypedFallback,
+    skipPrefix: config.skipPrefix,
   });
   const relationContext = createRelationResolutionContext(
     notion,

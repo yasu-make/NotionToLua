@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Multi-level relations (`relation_depth`)** — Set `relation_depth` in `[emit]` (or `[targets.<key>.emit]`) to embed Relation columns of related databases, two or more levels deep. Generated `export type` definitions nest accordingly. The default `1` keeps the previous behavior. See [docs/nested-relations.md](./docs/nested-relations.md#multi-level-nesting-relation_depth).
+
+- **`skip_prefix`** — Change the column name prefix that excludes a column from output (default `"[Skip]"`). Set it in `[emit]` or `[targets.<key>.emit]`; it applies to related databases too.
+
+### Fixed
+
+- **`[Skip]` Relation columns** — Relation columns whose names start with `[Skip]` are no longer embedded.
+- **Relation types with empty last record** — Relation entry types are now derived from the related database schema, so a record with an empty relation no longer collapses the type to `{ [string]: string }`.
+
 ## [0.7.0] - 2026-08-23
 
 ### Added

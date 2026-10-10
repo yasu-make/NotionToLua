@@ -348,10 +348,14 @@ export function pagesToLuauRecords(
   dataSource: DataSourceObjectResponse,
   options?: {
     onTypedFallback?: (warning: TypedConversionWarning) => void;
+    skipPrefix?: string;
   },
 ): LuauRecord[] {
   const titlePropertyName = resolveTitlePropertyName(dataSource);
-  const exportableProperties = listExportableProperties(dataSource);
+  const exportableProperties = listExportableProperties(
+    dataSource,
+    options?.skipPrefix,
+  );
 
   const seenKeys = new Map<string, number>();
   const records: LuauRecord[] = [];
@@ -421,6 +425,7 @@ export function listExportablePropertyNames(
 
 export function listExportableProperties(
   dataSource: DataSourceObjectResponse,
+  skipPrefix?: string,
 ): ExportableProperty[] {
   const titlePropertyName = resolveTitlePropertyName(dataSource);
 
@@ -428,7 +433,7 @@ export function listExportableProperties(
     .filter(
       ([propertyName, property]) =>
         propertyName !== titlePropertyName &&
-        !isSkippedPropertyName(propertyName) &&
+        !isSkippedPropertyName(propertyName, skipPrefix) &&
         SUPPORTED_PROPERTY_TYPES.has(property.type),
     )
     .map(([propertyName, property]) =>
