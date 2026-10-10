@@ -6,4 +6,4 @@
 [tools]
 StyLua = "JohnnyMorganz/StyLua@2.5.2"
 # After publishing a GitHub Release, consumer projects can add:
-ntn-lua = "Zac134/NotionToLua@0.7.0"
+ntn-lua = "Zac134/NotionToLua@0.8.0"

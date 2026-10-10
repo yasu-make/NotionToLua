@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-10-10
+
 ### Added
 
 - **Multi-level relations (`relation_depth`)** — Set `relation_depth` in `[emit]` (or `[targets.<key>.emit]`) to embed Relation columns of related databases, two or more levels deep. Generated `export type` definitions nest accordingly. The default `1` keeps the previous behavior. See [docs/nested-relations.md](./docs/nested-relations.md#multi-level-nesting-relation_depth).
