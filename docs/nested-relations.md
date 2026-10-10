@@ -143,7 +143,7 @@ local Weapons: Weapons = {
 }
 ```
 
-Each level follows the same rules as the first: dictionary or `[Array]`, scalar collapse when the related database has one exportable column, and `[Skip]` columns are ignored. Nested Relation columns count as exportable columns.
+Each level follows the same rules as the first: dictionary or `[Array]`, scalar collapse when the related database has one exportable column, and `[Skip]` columns (or your `skip_prefix`) are ignored. Nested Relation columns count as exportable columns.
 
 **Two-way relations.** A two-way Relation adds a back-reference column to the related database (for example `Effects.Weapons`). With `relation_depth` of 2 or more that column would embed the parent record again, so it is reported as a circular relation. Prefix the back-reference column with `[Skip]` (or turn off "Show on" for it in Notion).
 

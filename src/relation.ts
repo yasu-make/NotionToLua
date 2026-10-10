@@ -132,6 +132,7 @@ function toRelationColumn(
 
 function listRelationColumns(
   dataSource: DataSourceObjectResponse,
+  skipPrefix: string,
 ): RelationColumn[] {
   const titlePropertyName = resolveTitlePropertyName(dataSource);
   const columns: RelationColumn[] = [];
@@ -139,7 +140,7 @@ function listRelationColumns(
   for (const [propertyName, property] of Object.entries(dataSource.properties)) {
     if (
       propertyName === titlePropertyName ||
-      isSkippedPropertyName(propertyName) ||
+      isSkippedPropertyName(propertyName, skipPrefix) ||
       property.type !== "relation"
     ) {
       continue;
@@ -160,13 +161,14 @@ async function describeEntryProperties(
   dataSource: DataSourceObjectResponse,
   remainingDepth: number,
 ): Promise<ExportableProperty[]> {
-  const properties = listExportableProperties(dataSource);
+  const { skipPrefix } = context.config;
+  const properties = listExportableProperties(dataSource, skipPrefix);
 
   if (remainingDepth < 1) {
     return properties;
   }
 
-  for (const column of listRelationColumns(dataSource)) {
+  for (const column of listRelationColumns(dataSource, skipPrefix)) {
     properties.push({
       name: column.name,
       notionType: "relation",
@@ -341,7 +343,7 @@ async function embedRelation(
     for (const relatedPageId of relatedPageIds) {
       if (visitingPageIds.has(relatedPageId)) {
         throw new NotionToLuaError(
-          `Circular relation detected while embedding "${column.notionPropertyName}". Prefix the back-reference column with [Skip] or lower relation_depth.`,
+          `Circular relation detected while embedding "${column.notionPropertyName}". Prefix the back-reference column with ${context.config.skipPrefix} or lower relation_depth.`,
         );
       }
 
@@ -406,8 +408,9 @@ export async function resolveEmbeddedRelationsForRecords(
   dataSource: DataSourceObjectResponse,
 ): Promise<ExportableProperty[]> {
   const titlePropertyName = resolveTitlePropertyName(dataSource);
-  const relationColumns = listRelationColumns(dataSource);
-  const baseProperties = listExportableProperties(dataSource);
+  const { skipPrefix } = context.config;
+  const relationColumns = listRelationColumns(dataSource, skipPrefix);
+  const baseProperties = listExportableProperties(dataSource, skipPrefix);
 
   if (relationColumns.length === 0) {
     return baseProperties;

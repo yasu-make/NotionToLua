@@ -4,7 +4,11 @@ import { resolve } from "node:path";
 import { parse } from "smol-toml";
 
 import { NotionToLuaError } from "./errors.js";
-import type { EmptyRelationMode, EmptyValueMode } from "./types.js";
+import {
+  SKIP_PROPERTY_PREFIX,
+  type EmptyRelationMode,
+  type EmptyValueMode,
+} from "./types.js";
 
 export type EmitOverrides = {
   format?: boolean;
@@ -13,6 +17,7 @@ export type EmitOverrides = {
   emptyRelation?: EmptyRelationMode;
   omitArrayIndex?: boolean;
   relationDepth?: number;
+  skipPrefix?: string;
 };
 
 export type UserConfigTarget = {
@@ -25,6 +30,7 @@ export type UserConfigTarget = {
   empty_relation?: EmptyRelationMode;
   omit_array_index?: boolean;
   relation_depth?: number;
+  skip_prefix?: string;
 };
 
 export type UserConfigFile = {
@@ -38,6 +44,7 @@ export type UserConfigFile = {
   empty_relation?: EmptyRelationMode;
   omit_array_index?: boolean;
   relation_depth?: number;
+  skip_prefix?: string;
   targets?: Record<string, UserConfigTarget>;
 };
 
@@ -58,6 +65,7 @@ export type ResolvedUserConfig = {
   emptyRelation: EmptyRelationMode;
   omitArrayIndex: boolean;
   relationDepth: number;
+  skipPrefix: string;
 };
 
 export type PullJob = {
@@ -71,6 +79,7 @@ export type PullJob = {
   emptyRelation: EmptyRelationMode;
   omitArrayIndex: boolean;
   relationDepth: number;
+  skipPrefix: string;
 };
 
 const SECTION_NAMES = new Set(["source", "paths", "emit", "targets"]);
@@ -88,6 +97,7 @@ const FLAT_ALLOWED_KEYS = new Set([
   "empty_relation",
   "omit_array_index",
   "relation_depth",
+  "skip_prefix",
 ]);
 
 const SOURCE_KEYS = new Set(["database_id", "code_block_parent_page_id"]);
@@ -99,6 +109,7 @@ const EMIT_KEYS = new Set([
   "empty_relation",
   "omit_array_index",
   "relation_depth",
+  "skip_prefix",
 ]);
 const TARGET_ENTRY_KEYS = new Set([
   "database_id",
@@ -115,6 +126,7 @@ const DEFAULT_CONFIG: ResolvedUserConfig = {
   emptyRelation: "omit",
   omitArrayIndex: false,
   relationDepth: 1,
+  skipPrefix: SKIP_PROPERTY_PREFIX,
 };
 
 function assertNonEmptyString(value: unknown, key: string): string {
@@ -237,6 +249,7 @@ function applyEmitFields(
     empty_relation?: EmptyRelationMode;
     omit_array_index?: boolean;
     relation_depth?: number;
+    skip_prefix?: string;
   },
   record: Record<string, unknown>,
 ): void {
@@ -271,6 +284,10 @@ function applyEmitFields(
       record.relation_depth,
       "relation_depth",
     );
+  }
+
+  if ("skip_prefix" in record) {
+    config.skip_prefix = assertNonEmptyString(record.skip_prefix, "skip_prefix");
   }
 }
 
@@ -461,6 +478,10 @@ function copyEmitOverrides(target: NamedTarget, source: UserConfigTarget): void 
   if (source.relation_depth !== undefined) {
     target.relationDepth = source.relation_depth;
   }
+
+  if (source.skip_prefix !== undefined) {
+    target.skipPrefix = source.skip_prefix;
+  }
 }
 
 function resolveNamedTargets(
@@ -494,6 +515,7 @@ function resolveConfig(config: UserConfigFile): ResolvedUserConfig {
     emptyRelation: config.empty_relation ?? "omit",
     omitArrayIndex: config.omit_array_index ?? false,
     relationDepth: config.relation_depth ?? 1,
+    skipPrefix: config.skip_prefix ?? SKIP_PROPERTY_PREFIX,
   };
 
   assignOptionalString(resolved, "databaseId", config.database_id);
@@ -558,6 +580,7 @@ function emitFromConfig(config: ResolvedUserConfig): {
   emptyRelation: EmptyRelationMode;
   omitArrayIndex: boolean;
   relationDepth: number;
+  skipPrefix: string;
 } {
   return {
     format: config.format,
@@ -566,6 +589,7 @@ function emitFromConfig(config: ResolvedUserConfig): {
     emptyRelation: config.emptyRelation,
     omitArrayIndex: config.omitArrayIndex,
     relationDepth: config.relationDepth,
+    skipPrefix: config.skipPrefix,
   };
 }
 
@@ -579,6 +603,7 @@ function mergeEmit(
   emptyRelation: EmptyRelationMode;
   omitArrayIndex: boolean;
   relationDepth: number;
+  skipPrefix: string;
 } {
   const base = emitFromConfig(config);
   return {
@@ -588,6 +613,7 @@ function mergeEmit(
     emptyRelation: override?.emptyRelation ?? base.emptyRelation,
     omitArrayIndex: override?.omitArrayIndex ?? base.omitArrayIndex,
     relationDepth: override?.relationDepth ?? base.relationDepth,
+    skipPrefix: override?.skipPrefix ?? base.skipPrefix,
   };
 }
 
@@ -603,6 +629,7 @@ export function configForPullJob(
     emptyRelation: job.emptyRelation,
     omitArrayIndex: job.omitArrayIndex,
     relationDepth: job.relationDepth,
+    skipPrefix: job.skipPrefix,
   };
 }
 

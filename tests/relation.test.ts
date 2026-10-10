@@ -727,6 +727,7 @@ async function resolveWeapons(
   relatedDataSources: DataSourceObjectResponse[],
   relatedPages: PageObjectResponse[],
   relationDepth: number,
+  skipPrefix = "[Skip]",
 ) {
   const records: LuauRecord[] = weaponPages.map((page) => ({
     key: page.properties.Name?.type === "title"
@@ -745,6 +746,7 @@ async function resolveWeapons(
       emptyRelation: "omit",
       omitArrayIndex: false,
       relationDepth,
+      skipPrefix,
     },
     weaponPages,
   );
@@ -913,5 +915,39 @@ describe("nested relations (relation_depth)", () => {
       properties.map((property) => property.name),
       ["Effects"],
     );
+  });
+
+  it("uses a custom skip_prefix at every level", async () => {
+    const effects = createDataSource("effects-ds", {
+      Power: numberProperty("Power"),
+      "_Weapons": relationProperty("_Weapons", "weapons-ds"),
+      "[Skip] Kept": numberProperty("[Skip] Kept"),
+    });
+    const fire = createPage("fire-page", "Fire", {
+      Power: numberValue("Power", 10),
+      "_Weapons": relationValue("_Weapons", ["sword-page"]),
+      "[Skip] Kept": numberValue("[Skip] Kept", 1),
+    });
+    const weapons = createDataSource("weapons-ds", {
+      Effects: relationProperty("Effects", "effects-ds"),
+      "_Notes": relationProperty("_Notes", "effects-ds"),
+    });
+    const sword = createPage("sword-page", "Sword", {
+      Effects: relationValue("Effects", ["fire-page"]),
+      "_Notes": relationValue("_Notes", ["fire-page"]),
+    });
+
+    const { records } = await resolveWeapons(
+      weapons,
+      [sword],
+      [effects, weapons],
+      [fire],
+      2,
+      "_",
+    );
+
+    assert.deepEqual(records[0]?.properties, {
+      Effects: { Fire: { Power: 10, "[Skip] Kept": 1 } },
+    });
   });
 });

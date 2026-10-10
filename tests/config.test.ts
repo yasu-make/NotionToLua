@@ -36,6 +36,7 @@ describe("loadUserConfig", () => {
         emptyRelation: "omit",
         omitArrayIndex: false,
         relationDepth: 1,
+        skipPrefix: "[Skip]",
       });
     });
   });
@@ -64,6 +65,7 @@ relation_depth = 3
           emptyRelation: "empty_table",
           omitArrayIndex: true,
           relationDepth: 3,
+          skipPrefix: "[Skip]",
         });
       },
     );
@@ -98,6 +100,7 @@ relation_depth = 3
           emptyRelation: "empty_table",
           omitArrayIndex: true,
           relationDepth: 3,
+          skipPrefix: "[Skip]",
         });
       },
     );
@@ -272,6 +275,39 @@ relation = "embed"
     }
   });
 
+  it("reads skip_prefix globally and per target", () => {
+    withTempConfig(
+      `[emit]
+skip_prefix = "_"
+
+[targets.weapons]
+database_id = "db-weapons"
+output = "src/Weapons.luau"
+
+[targets.weapons.emit]
+skip_prefix = "#"
+`,
+      (cwd) => {
+        const config = loadUserConfig(cwd);
+        assert.equal(config.skipPrefix, "_");
+        assert.equal(config.namedTargets.weapons?.skipPrefix, "#");
+        assert.equal(
+          resolvePullJobs({ positional: "weapons", config })[0]?.skipPrefix,
+          "#",
+        );
+      },
+    );
+  });
+
+  it("throws when skip_prefix is empty", () => {
+    withTempConfig('skip_prefix = "  "\n', (cwd) => {
+      assert.throws(
+        () => loadUserConfig(cwd),
+        /Invalid value for "skip_prefix"/,
+      );
+    });
+  });
+
   it("reads per-target relation_depth overrides", () => {
     withTempConfig(
       `[emit]
@@ -405,6 +441,7 @@ code_block_parent_page_id = "page-items"
           emptyRelation: "omit",
           omitArrayIndex: false,
           relationDepth: 1,
+          skipPrefix: "[Skip]",
         });
       },
     );
@@ -547,6 +584,7 @@ const emitConfig: ResolvedUserConfig = {
   emptyRelation: "omit",
   omitArrayIndex: false,
   relationDepth: 1,
+  skipPrefix: "[Skip]",
 };
 
 const defaultJobEmit = {
@@ -556,6 +594,7 @@ const defaultJobEmit = {
   emptyRelation: "omit" as const,
   omitArrayIndex: false,
   relationDepth: 1,
+  skipPrefix: "[Skip]",
 };
 
 describe("resolvePullJobs", () => {
@@ -717,6 +756,7 @@ describe("resolvePullJobs", () => {
         emptyRelation: "omit",
         omitArrayIndex: false,
         relationDepth: 1,
+        skipPrefix: "[Skip]",
       },
     ]);
   });
